@@ -1,0 +1,47 @@
+{
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/mongoose": "^5.11.97",
+    "@types/node": "^25.2.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "name": "backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "bson": "^7.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "esbuild": "^0.27.3",
+    "express": "^5.2.1",
+    "get-tsconfig": "^4.13.6",
+    "kareem": "^3.2.0",
+    "memory-pager": "^1.5.0",
+    "mongodb": "^7.0.0",
+    "mongodb-connection-string-url": "^7.0.1",
+    "mongoose": "^9.2.1",
+    "mpath": "^0.9.0",
+    "mquery": "^6.0.0",
+    "ms": "^2.1.3",
+    "multer": "^2.0.2",
+    "punycode": "^2.3.1",
+    "resolve-pkg-maps": "^1.0.0",
+    "sift": "^17.1.3",
+    "sparse-bitfield": "^3.0.3",
+    "tr46": "^5.1.1",
+    "undici-types": "^7.16.0",
+    "webidl-conversions": "^7.0.0",
+    "whatwg-url": "^14.2.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch server.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

@@ -1,0 +1,322 @@
+/* ============================================
+   SHARED BUTTON STYLES WITH HOVER/ACTIVE STATES
+   ============================================ */
+
+/* Primary Buttons - Blue Theme */
+.btn-primary,
+.ia-primary-btn,
+.ia-demo-btn,
+.pm-demo-btn,
+.sr-demo-btn,
+.qr-demo-btn,
+.qr-primary,
+.dash-demo-btn {
+	background: #2563eb;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.btn-primary:hover,
+.ia-primary-btn:hover,
+.ia-demo-btn:hover,
+.pm-demo-btn:hover,
+.sr-demo-btn:hover,
+.qr-demo-btn:hover,
+.qr-primary:hover,
+.dash-demo-btn:hover {
+	background: #1d4ed8;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-primary:active,
+.ia-primary-btn:active,
+.ia-demo-btn:active,
+.pm-demo-btn:active,
+.sr-demo-btn:active,
+.qr-demo-btn:active,
+.qr-primary:active,
+.dash-demo-btn:active {
+	background: #1e40af;
+	transform: translateY(0);
+	box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.btn-primary:disabled,
+.ia-primary-btn:disabled {
+	background: #94a3b8;
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: none;
+}
+
+/* Outline Buttons */
+.btn-outline,
+.ia-outline-btn,
+.sr-outline-btn {
+	background: transparent;
+	color: #3b82f6;
+	border: 1.5px solid #3b82f6;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.btn-outline:hover,
+.ia-outline-btn:hover,
+.sr-outline-btn:hover {
+	background: #3b82f6;
+	color: white;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.btn-outline:active,
+.ia-outline-btn:active,
+.sr-outline-btn:active {
+	background: #2563eb;
+	border-color: #2563eb;
+	transform: translateY(0);
+}
+
+/* Export Buttons */
+.btn-export,
+.sr-export-btn {
+	background: #10b981;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.btn-export:hover,
+.sr-export-btn:hover {
+	background: #059669;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-export:active,
+.sr-export-btn:active {
+	background: #047857;
+	transform: translateY(0);
+}
+
+/* Action Buttons - Color Variants */
+.blue-btn {
+	background: #3b82f6;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.blue-btn:hover {
+	background: #2563eb;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.blue-btn:active {
+	background: #1d4ed8;
+	transform: translateY(0);
+}
+
+.green-btn {
+	background: #10b981;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.green-btn:hover {
+	background: #059669;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.green-btn:active {
+	background: #047857;
+	transform: translateY(0);
+}
+
+.orange-btn {
+	background: #f59e0b;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.orange-btn:hover {
+	background: #d97706;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.orange-btn:active {
+	background: #b45309;
+	transform: translateY(0);
+}
+
+/* Generic Action Buttons */
+.qr-generated-card .gen-actions button,
+.qr-template-card button,
+.support-card button,
+.automation-btn {
+	background: #6366f1;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.qr-generated-card .gen-actions button:hover,
+.qr-template-card button:hover,
+.support-card button:hover,
+.automation-btn:hover {
+	background: #4f46e5;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.qr-generated-card .gen-actions button:active,
+.qr-template-card button:active,
+.support-card button:active,
+.automation-btn:active {
+	background: #4338ca;
+	transform: translateY(0);
+}
+
+/* Upload Button */
+.ia-upload-control {
+	background: #8b5cf6;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.ia-upload-control:hover {
+	background: #7c3aed;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.ia-upload-control:active {
+	background: #6d28d9;
+	transform: translateY(0);
+}
+
+/* Pagination Buttons */
+.sr-pagination button,
+.pagination-control button {
+	background: white;
+	color: #334155;
+	border: 1px solid #e2e8f0;
+	padding: 6px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	font-size: 14px;
+}
+
+.sr-pagination button:hover:not(:disabled),
+.pagination-control button:hover:not(:disabled) {
+	background: #f1f5f9;
+	border-color: #cbd5e1;
+	transform: translateY(-1px);
+}
+
+.sr-pagination button:active:not(:disabled),
+.pagination-control button:active:not(:disabled) {
+	background: #e2e8f0;
+	transform: translateY(0);
+}
+
+.sr-pagination button.active,
+.pagination-control button.active {
+	background: #2563eb;
+	color: white;
+	border-color: #2563eb;
+}
+
+.sr-pagination button:disabled,
+.pagination-control button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Link Buttons (Sidebar, Navigation) */
+.side-item,
+.ia-side-item,
+.pm-side-item,
+.sr-side-item,
+.qr-side-item,
+.dash-topnav a {
+	transition: all 0.2s ease;
+}
+
+.side-item:hover,
+.ia-side-item:hover,
+.pm-side-item:hover,
+.sr-side-item:hover,
+.qr-side-item:hover,
+.dash-topnav a:hover {
+	background: rgba(37, 99, 235, 0.1);
+	color: #2563eb;
+	transform: translateX(4px);
+}
+
+.side-item:active,
+.ia-side-item:active,
+.pm-side-item:active,
+.sr-side-item:active,
+.qr-side-item:active {
+	transform: translateX(2px);
+}
+
+/* Focus States for Accessibility */
+button:focus-visible,
+a:focus-visible {
+	outline: 2px solid #3b82f6;
+	outline-offset: 2px;
+}
