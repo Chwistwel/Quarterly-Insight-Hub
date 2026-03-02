@@ -1,26 +1,43 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import Home from './pages/Home';
-import Analytics from './pages/Analytics';
-import Dashboard from './pages/Dashboard';
-import ItemAnalysis from './pages/ItemAnalysis';
-import PerformanceMetrics from './pages/PerformanceMetrics';
-import QuarterlyReport from './pages/QuarterlyReport';
-import StudentRecords from './pages/StudentRecords';
+import Auth from './pages/Auth';
+
+type ThemeMode = 'light' | 'dark';
+
+function getInitialTheme(): ThemeMode {
+  const storedTheme = localStorage.getItem('themeMode');
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    return storedTheme;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
 function App() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', themeMode);
+    localStorage.setItem('themeMode', themeMode);
+  }, [themeMode]);
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/Home" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/Home" element={<Home />} />
-        <Route path="/item-analysis" element={<ItemAnalysis />} />
-        <Route path="/performance-metrics" element={<PerformanceMetrics />} />
-        <Route path="/student-records" element={<StudentRecords />} />
-        <Route path="/quarterly-reports" element={<QuarterlyReport />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="*" element={<Navigate to="/Home" replace />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      <button
+        type="button"
+        className={`theme-toggle ${themeMode === 'light' ? 'theme-toggle--light' : 'theme-toggle--dark'}`}
+        onClick={() => setThemeMode((current) => (current === 'light' ? 'dark' : 'light'))}
+        aria-label={`Switch to ${themeMode === 'light' ? 'dark' : 'light'} mode`}
+      >
+        {themeMode === 'light' ? '🌙' : '☀️'}
+      </button>
     </BrowserRouter>
   );
 }

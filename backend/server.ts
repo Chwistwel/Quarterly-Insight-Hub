@@ -272,6 +272,84 @@ app.get('/api/example', (req: Request, res: Response) => {
     res.json({ message: 'Hello from TypeScript Server!' });
 });
 
+app.get('/api/analytics', (_req: Request, res: Response) => {
+    res.json({
+        title: 'Advanced Analytics',
+        description: 'Connect your data sources to start generating analytics insights.'
+    });
+});
+
+app.get('/api/dashboard', (_req: Request, res: Response) => {
+    res.json({
+        metrics: {
+            totalStudents: 0,
+            averageScore: 0,
+            subjectsAssessed: 0,
+            highPerformers: 0,
+            trends: {
+                students: 'No trend data available',
+                score: 'No trend data available',
+                subjects: 'No trend data available',
+                performers: 'No trend data available'
+            }
+        },
+        gradeDistribution: { a: 0, b: 0, c: 0, d: 0, f: 0 },
+        subjectPerformance: [],
+        activities: []
+    });
+});
+
+app.get('/api/performance-metrics', (_req: Request, res: Response) => {
+    res.json({
+        kpiMetrics: {
+            overallAverage: 0,
+            passingRate: 0,
+            atRiskStudents: 0,
+            trends: {
+                average: 'No trend data available',
+                passing: 'No trend data available',
+                atRisk: 'No trend data available'
+            }
+        },
+        subjectData: [],
+        topPerformers: [],
+        supportStudents: [],
+        insights: []
+    });
+});
+
+app.get('/api/quarterly-reports', (_req: Request, res: Response) => {
+    res.json({
+        templates: [],
+        generatedReports: [],
+        components: [],
+        statistics: {
+            totalReports: 0,
+            downloads: 0,
+            automatedSchedules: 0,
+            accuracy: 0
+        }
+    });
+});
+
+app.get('/api/student-records', (req: Request, res: Response) => {
+    const rawPage = Number(req.query.page);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+
+    res.json({
+        students: [],
+        kpiCounts: {
+            total: 0,
+            excellent: 0,
+            good: 0,
+            satisfactory: 0,
+            needsSupport: 0
+        },
+        currentPage: page,
+        totalPages: 1
+    });
+});
+
 app.post('/api/item-analysis/compute', upload.single('file'), (req: Request, res: Response) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded. Use form-data field name "file".' });
