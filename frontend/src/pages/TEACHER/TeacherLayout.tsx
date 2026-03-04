@@ -86,12 +86,14 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 			</aside>
 
 			<section className="teacher-main">
-				<header className="teacher-main-header">
-					<div>
-						<h1>{title}</h1>
-					</div>
-					{actions ? <div className="teacher-main-actions">{actions}</div> : null}
-				</header>
+				{actions ? (
+					<header className="teacher-main-header">
+						<div>
+							<h1>{title}</h1>
+						</div>
+						<div className="teacher-main-actions">{actions}</div>
+					</header>
+				) : null}
 				{children}
 			</section>
 		</div>

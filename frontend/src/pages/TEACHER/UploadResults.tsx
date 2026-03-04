@@ -29,16 +29,14 @@ function UploadResults() {
 	}, []);
 
 	return (
-		<TeacherLayout title={data?.title ?? ''}>
-			{data?.systemLabel || data?.title || data?.viewLabel ? (
-				<section className="teacher-dash-heading teacher-page-heading">
-					{data?.systemLabel ? <p>{data.systemLabel}</p> : null}
-					<div>
-						{data?.title ? <h2>{data.title}</h2> : null}
-						{data?.viewLabel ? <span>{data.viewLabel}</span> : null}
-					</div>
-				</section>
-			) : null}
+		<TeacherLayout title={data?.title ?? 'Upload Quarterly Exam Results'}>
+			<section className="teacher-dash-heading teacher-page-heading">
+				<p>{data?.systemLabel ?? 'UPLOAD AND ANALYZE STUDENT PERFORMANCE DATA'}</p>
+				<div>
+					<h2>{data?.title ?? 'Upload Quarterly Exam Results'}</h2>
+					<span>{data?.viewLabel ?? 'Teacher View'}</span>
+				</div>
+			</section>
 
 			{loading ? <p className="teacher-status">Loading upload form...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
@@ -110,23 +108,23 @@ function UploadResults() {
 					<h2>Upload Instructions</h2>
 					<div className="upload-instructions-group">
 						<h3>File Format</h3>
-						{data?.fileFormats?.length ? (
-							<p>{`Upload ${data.fileFormats.join(' or ')} file with student responses.`}</p>
-						) : null}
+						<p>
+							{data?.fileFormats?.length
+								? `Upload ${data.fileFormats.join(' or ')} file with student responses. Ensure the file follows the required format.`
+								: 'Upload a CSV or Excel file with student responses. Ensure the file follows the required format.'}
+						</p>
 					</div>
 					<div className="upload-instructions-group">
 						<h3>Required Columns</h3>
-						{data?.requiredColumns?.length ? (
-							<ul>
-								{data.requiredColumns.map((column) => (
-									<li key={column}>{column}</li>
-								))}
-							</ul>
-						) : null}
+						<ul>
+							{(data?.requiredColumns ?? ['Student ID', 'Student Name', 'Item Responses (1-50)', 'Answer Key']).map((column) => (
+								<li key={column}>{column}</li>
+							))}
+						</ul>
 					</div>
 					<div className="upload-instructions-group">
 						<h3>Processing Time</h3>
-						{data?.processingTime ? <p>{data.processingTime}</p> : null}
+						<p>{data?.processingTime ?? 'Analysis typically takes 5-10 minutes depending on the number of students.'}</p>
 					</div>
 					<button type="button" className="teacher-secondary-btn">Download Template</button>
 				</section>

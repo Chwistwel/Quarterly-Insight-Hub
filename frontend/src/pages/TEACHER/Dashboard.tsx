@@ -61,16 +61,14 @@ function Dashboard() {
 	}, [data]);
 
 	return (
-		<TeacherLayout title={data?.title ?? ''}>
-			{data?.systemLabel || data?.title || data?.viewLabel ? (
-				<section className="teacher-dash-heading">
-					{data?.systemLabel ? <p>{data.systemLabel}</p> : null}
-					<div>
-						{data?.title ? <h2>{data.title}</h2> : null}
-						{data?.viewLabel ? <span>{data.viewLabel}</span> : null}
-					</div>
-				</section>
-			) : null}
+		<TeacherLayout title={data?.title ?? 'My Dashboard'}>
+			<section className="teacher-dash-heading">
+				<p>{data?.systemLabel ?? 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM'}</p>
+				<div>
+					<h2>{data?.title ?? 'My Dashboard'}</h2>
+					<span>{data?.viewLabel ?? 'Teacher View'}</span>
+				</div>
+			</section>
 
 			<section className="teacher-filter-row">
 				<select value={selectedGrade} onChange={(event) => setSelectedGrade(event.target.value)}>

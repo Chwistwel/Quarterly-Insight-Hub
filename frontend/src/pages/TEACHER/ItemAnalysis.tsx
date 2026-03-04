@@ -38,16 +38,14 @@ function ItemAnalysis() {
 	}, []);
 
 	return (
-		<TeacherLayout title={data?.title ?? ''}>
-			{data?.systemLabel || data?.title || data?.viewLabel ? (
-				<section className="teacher-dash-heading teacher-page-heading">
-					{data?.systemLabel ? <p>{data.systemLabel}</p> : null}
-					<div>
-						{data?.title ? <h2>{data.title}</h2> : null}
-						{data?.viewLabel ? <span>{data.viewLabel}</span> : null}
-					</div>
-				</section>
-			) : null}
+		<TeacherLayout title={data?.title ?? 'My Item Analysis'}>
+			<section className="teacher-dash-heading teacher-page-heading">
+				<p>{data?.systemLabel ?? 'COMPREHENSIVE ITEM ANALYSIS'}</p>
+				<div>
+					<h2>{data?.title ?? 'My Item Analysis'}</h2>
+					<span>{data?.viewLabel ?? 'Teacher View'}</span>
+				</div>
+			</section>
 
 			{loading ? <p className="teacher-status">Loading item analysis...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
@@ -66,23 +64,25 @@ function ItemAnalysis() {
 			<div className="teacher-kpis teacher-kpis-3">
 				<article className="teacher-card">
 					<p>Average Score</p>
-					<strong>{data?.classAverage ?? '—'}</strong>
+					<strong>{data?.classAverage}</strong>
 				</article>
 				<article className="teacher-card">
 					<p>Average Index</p>
-					<strong>{data?.averageIndex ?? '—'}</strong>
+					<strong>{data?.averageIndex}</strong>
 				</article>
 				<article className="teacher-card">
 					<p>Total Students</p>
-					<strong>{data?.totalStudents ?? '—'}</strong>
+					<strong>{data?.totalStudents}</strong>
 				</article>
 			</div>
 
-			<div className="teacher-tabs">
-				<button type="button" className={selectedView === 'all' ? 'active' : ''} onClick={() => setSelectedView('all')}>All Items</button>
-				<button type="button" className={selectedView === 'excellent' ? 'active' : ''} onClick={() => setSelectedView('excellent')}>Excellent</button>
-				<button type="button" className={selectedView === 'good' ? 'active' : ''} onClick={() => setSelectedView('good')}>Good</button>
-				<button type="button" className={selectedView === 'needs' ? 'active' : ''} onClick={() => setSelectedView('needs')}>Needs Improvement</button>
+			<div className="teacher-tabs-wrap">
+				<div className="teacher-tabs">
+					<button type="button" className={selectedView === 'all' ? 'active' : ''} onClick={() => setSelectedView('all')}>All Items</button>
+					<button type="button" className={selectedView === 'excellent' ? 'active' : ''} onClick={() => setSelectedView('excellent')}>Excellent</button>
+					<button type="button" className={selectedView === 'good' ? 'active' : ''} onClick={() => setSelectedView('good')}>Good</button>
+					<button type="button" className={selectedView === 'needs' ? 'active' : ''} onClick={() => setSelectedView('needs')}>Needs Improvement</button>
+				</div>
 			</div>
 
 			<section className="teacher-panel">

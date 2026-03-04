@@ -4,20 +4,28 @@
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.teacher-tabs-wrap {
+	max-width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	justify-self: start;
+}
+
 .teacher-tabs {
 	display: inline-flex;
+	align-items: center;
+	flex-wrap: nowrap;
 	gap: 0.2rem;
 	padding: 0.25rem;
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	background: var(--surface);
-	justify-self: start;
-	width: fit-content;
-	max-width: 100%;
+	width: max-content;
 }
 
 .teacher-tabs button {
 	height: 30px;
+	flex: 0 0 auto;
 	border: 0;
 	border-radius: 999px;
 	padding: 0 0.65rem;

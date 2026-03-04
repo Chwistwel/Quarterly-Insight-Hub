@@ -28,18 +28,18 @@ function MyReports() {
 	}, []);
 
 	return (
-		<TeacherLayout title={data?.title ?? ''}>
-			{data?.systemLabel || data?.title || data?.viewLabel ? (
-				<section className="teacher-dash-heading teacher-page-heading">
-					{data?.systemLabel ? <p>{data.systemLabel}</p> : null}
-					<div>
-						{data?.title ? <h2>{data.title}</h2> : null}
-						{data?.viewLabel ? <span>{data.viewLabel}</span> : null}
-					</div>
-				</section>
-			) : null}
+		<TeacherLayout title={data?.title ?? 'My Reports'}>
+			<section className="teacher-dash-heading teacher-page-heading">
+				<p>{data?.systemLabel ?? 'REPORT GENERATION CENTER'}</p>
+				<div>
+					<h2>{data?.title ?? 'My Reports'}</h2>
+					<span>{data?.viewLabel ?? 'Teacher View'}</span>
+				</div>
+			</section>
 
-			{data?.subtitle ? <p className="teacher-page-subtitle">{data.subtitle}</p> : null}
+			<p className="teacher-page-subtitle">
+				{data?.subtitle ?? 'Generate and download reports for your classes and student performance'}
+			</p>
 
 			{loading ? <p className="teacher-status">Loading reports...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
