@@ -350,6 +350,108 @@ app.get('/api/student-records', (req: Request, res: Response) => {
     });
 });
 
+app.get('/teacher/dashboard', (_req: Request, res: Response) => {
+    res.json({
+        title: 'My Dashboard',
+        systemLabel: 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM',
+        viewLabel: 'Teacher View',
+        filters: {
+            grades: ['Grade 7 - Section A'],
+            quarters: ['Q1', 'Q2', 'Q3', 'Q4']
+        },
+        kpis: [
+            { label: 'Class Average', value: '76.8%', description: '+2.3% from last quarter' },
+            { label: 'Pass Rate', value: '79%', description: '34 of 43 students' },
+            { label: 'My Students', value: '43', description: 'Grade 7 - Section A' },
+            { label: 'Items Analyzed', value: '50', description: 'Math Q1 Exam' }
+        ],
+        trend: [
+            { label: 'Q1', value: 77 },
+            { label: 'Q2', value: 79 },
+            { label: 'Q3', value: 82 },
+            { label: 'Q4', value: 85 }
+        ],
+        trendSubtitle: 'Quarterly Performance Trend - Grade 7 Section A',
+        topStudents: [
+            { name: 'Maria Santos', improvement: '+5% improvement', score: '95%' },
+            { name: 'Juan Dela Cruz', improvement: '+3% improvement', score: '92%' },
+            { name: 'Anna Reyes', improvement: '+8% improvement', score: '90%' },
+            { name: 'Carlos Garcia', improvement: '+2% improvement', score: '88%' },
+            { name: 'Lisa Mendoza', improvement: '+6% improvement', score: '87%' }
+        ],
+        improvementAreas: [
+            { area: 'Algebraic Thinking', value: 88 },
+            { area: 'Problem Solving', value: 75 },
+            { area: 'Geometry Concepts', value: 85 },
+            { area: 'Data Analysis', value: 82 }
+        ],
+        highlights: []
+    });
+});
+
+app.get('/teacher/item-analysis', (_req: Request, res: Response) => {
+    res.json({
+        title: 'My Item Analysis - Grade 7',
+        systemLabel: 'COMPREHENSIVE ITEM ANALYSIS',
+        viewLabel: 'Teacher View',
+        grade: 'Grade 7',
+        section: 'Section A',
+        subject: 'Mathematics',
+        classAverage: '78.5%',
+        averageIndex: '82%',
+        totalStudents: 45,
+        totalItems: 50,
+        rows: [
+            { itemNo: 1, difficultyIndex: 0.75, discriminationIndex: 0.68, interpretation: 'Good' },
+            { itemNo: 2, difficultyIndex: 0.82, discriminationIndex: 0.51, interpretation: 'Fair' },
+            { itemNo: 3, difficultyIndex: 0.68, discriminationIndex: 0.72, interpretation: 'Good' },
+            { itemNo: 4, difficultyIndex: 0.48, discriminationIndex: 0.81, interpretation: 'Excellent' },
+            { itemNo: 5, difficultyIndex: 0.82, discriminationIndex: 0.42, interpretation: 'Poor' },
+            { itemNo: 6, difficultyIndex: 0.75, discriminationIndex: 0.65, interpretation: 'Good' }
+        ]
+    });
+});
+
+app.get('/teacher/upload-meta', (_req: Request, res: Response) => {
+    res.json({
+        title: 'Upload Quarterly Exam Results - Q2',
+        systemLabel: 'UPLOAD AND ANALYZE STUDENT PERFORMANCE DATA',
+        viewLabel: 'Teacher View',
+        gradeLevels: ['Grade 7 - Section A', 'Grade 7 - Section B', 'Grade 8 - Section A'],
+        subjects: ['Mathematics', 'Science', 'English'],
+        quarters: ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'],
+        fileFormats: ['CSV', 'Excel'],
+        requiredColumns: ['Student ID', 'Student Name', 'Item Responses (1-50)', 'Answer Key'],
+        processingTime: 'Analysis typically takes 5-10 minutes depending on the number of students.',
+        recentUploads: [
+            { fileName: 'Mathematics - Grade 7-A', status: 'Completed' },
+            { fileName: 'Mathematics - Grade 7-B', status: 'Completed' },
+            { fileName: 'Mathematics - Grade 8-A', status: 'Completed' }
+        ]
+    });
+});
+
+app.get('/teacher/reports', (_req: Request, res: Response) => {
+    res.json({
+        title: 'My Reports',
+        systemLabel: 'REPORT GENERATION CENTER',
+        viewLabel: 'Teacher View',
+        subtitle: 'Generate and download reports for your classes and student performance',
+        actions: [
+            { id: 'class-reports', title: 'Class Reports', description: 'Generate performance reports for your classes', buttonLabel: 'Generate Report' },
+            { id: 'student-progress', title: 'Student Progress', description: 'Track individual student performance trends', buttonLabel: 'View Progress' },
+            { id: 'item-analysis', title: 'Item Analysis', description: 'Detailed item-level analysis reports', buttonLabel: 'Generate' }
+        ],
+        summary: '',
+        reports: [
+            { id: '1', title: 'My Class Performance Report', category: 'Detailed analysis of your class performance for Q2', updatedAt: 'March 1, 2024', status: '2.4 MB' },
+            { id: '2', title: 'Student Progress Report', category: 'Individual student progress tracking for Grade 7-A', updatedAt: 'March 1, 2024', status: '1.8 MB' },
+            { id: '3', title: 'Item Analysis Summary', category: 'Comprehensive item analysis for Mathematics Q2', updatedAt: 'February 28, 2024', status: '1.2 MB' },
+            { id: '4', title: 'Competency Assessment', category: 'Learning competency mastery report for your classes', updatedAt: 'February 27, 2024', status: '1.5 MB' }
+        ]
+    });
+});
+
 app.post('/api/item-analysis/compute', upload.single('file'), (req: Request, res: Response) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded. Use form-data field name "file".' });

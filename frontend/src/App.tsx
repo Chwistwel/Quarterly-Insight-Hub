@@ -1,7 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Home from './pages/Home';
-import Auth from './pages/Auth';
+import TeacherDashboard from './pages/TEACHER/Dashboard';
+import TeacherItemAnalysis from './pages/TEACHER/ItemAnalysis';
+import TeacherUploadResults from './pages/TEACHER/UploadResults';
+import TeacherMyReports from './pages/TEACHER/MyReports';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -26,7 +29,11 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/teacher" element={<Navigate to="/teacher/dashboard" replace />} />
+        <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
+        <Route path="/teacher/item-analysis" element={<TeacherItemAnalysis />} />
+        <Route path="/teacher/upload-results" element={<TeacherUploadResults />} />
+        <Route path="/teacher/my-reports" element={<TeacherMyReports />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 

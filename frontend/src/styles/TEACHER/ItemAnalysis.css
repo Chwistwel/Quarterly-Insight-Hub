@@ -1,0 +1,74 @@
+@import './Dashboard.css';
+
+.teacher-kpis-3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-tabs {
+	display: inline-flex;
+	gap: 0.2rem;
+	padding: 0.25rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	justify-self: start;
+	width: fit-content;
+	max-width: 100%;
+}
+
+.teacher-tabs button {
+	height: 30px;
+	border: 0;
+	border-radius: 999px;
+	padding: 0 0.65rem;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.teacher-tabs button.active {
+	background: var(--surface-soft);
+	color: var(--brand);
+}
+
+.teacher-badge {
+	display: inline-flex;
+	padding: 0.16rem 0.5rem;
+	border-radius: 999px;
+	font-size: 0.72rem;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.teacher-badge.excellent {
+	background: #e7f8eb;
+	color: #198754;
+}
+
+.teacher-badge.good {
+	background: #e8f0ff;
+	color: #3667cf;
+}
+
+.teacher-badge.fair {
+	background: #fff6df;
+	color: #b1841d;
+}
+
+.teacher-badge.poor {
+	background: #ffe9e9;
+	color: #c43d3d;
+}
+
+.teacher-badge.neutral {
+	background: var(--surface-soft);
+	color: var(--text-secondary);
+}
+
+@media (max-width: 900px) {
+	.teacher-kpis-3 {
+		grid-template-columns: 1fr;
+	}
+}

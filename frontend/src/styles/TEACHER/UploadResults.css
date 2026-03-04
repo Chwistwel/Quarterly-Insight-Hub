@@ -1,0 +1,103 @@
+@import './Dashboard.css';
+
+.upload-layout-alt {
+	grid-template-columns: 1.4fr 0.9fr;
+	align-items: start;
+}
+
+.upload-left-col {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.upload-form-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.6rem;
+}
+
+.upload-dropzone {
+	text-align: center;
+	padding: 1rem;
+}
+
+.upload-dropzone span {
+	font-weight: 700;
+	color: var(--brand);
+}
+
+.upload-dropzone small {
+	display: block;
+	margin-top: 0.45rem;
+	font-size: 0.8rem;
+}
+
+.upload-instructions-panel {
+	position: sticky;
+	top: 0.9rem;
+}
+
+.upload-instructions-group {
+	margin-top: 0.8rem;
+}
+
+.upload-instructions-group h3 {
+	margin: 0;
+	font-size: 0.9rem;
+	color: var(--brand);
+}
+
+.upload-instructions-group p {
+	margin: 0.35rem 0 0;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	line-height: 1.4;
+}
+
+.upload-instructions-group ul {
+	margin: 0.35rem 0 0;
+	padding-left: 1.05rem;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	display: grid;
+	gap: 0.25rem;
+}
+
+.teacher-secondary-btn {
+	height: 36px;
+	border: 1px solid var(--border-strong);
+	border-radius: 9px;
+	background: var(--surface-soft);
+	color: var(--brand);
+	font-weight: 700;
+	font-size: 0.82rem;
+	cursor: pointer;
+}
+
+.upload-recent-list li {
+	background: var(--surface);
+}
+
+.upload-status-done {
+	background: #e7f8eb;
+	color: #198754 !important;
+	padding: 0.15rem 0.55rem;
+	border-radius: 999px;
+	font-size: 0.72rem !important;
+}
+
+@media (max-width: 1200px) {
+	.upload-layout-alt {
+		grid-template-columns: 1fr;
+	}
+
+	.upload-instructions-panel {
+		position: static;
+	}
+}
+
+@media (max-width: 760px) {
+	.upload-form-grid {
+		grid-template-columns: 1fr;
+	}
+}

@@ -1,7 +1,29 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../styles/Home.css';
 
+type AuthMode = 'login' | 'signup';
+type UserRole = 'teacher' | 'administrator';
+
 function Home() {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [role, setRole] = useState<UserRole>('teacher');
+  const [showResetHint, setShowResetHint] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    localStorage.setItem('userRole', role);
+    navigate(role === 'teacher' ? '/teacher/dashboard' : '/');
+  };
+
+  const continueWithGoogle = () => {
+    localStorage.setItem('userRole', role);
+    navigate(role === 'teacher' ? '/teacher/dashboard' : '/');
+  };
+
   return (
     <div className="page">
       <div className="bg-orb bg-orb-1" aria-hidden="true" />
@@ -10,106 +32,178 @@ function Home() {
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">QIH</div>
-          <strong>QIH</strong>
+          <strong>Quarterly Insights Hub</strong>
         </div>
-        <nav className="nav">
-          <a href="#modules">Modules</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#reports">Reports</a>
-        </nav>
-        <Link className="cta" to="/auth?mode=signup&role=teacher">Sign Up</Link>
+        <a className="cta" href="#auth">Get Started</a>
       </header>
 
       <main>
         <section className="hero" id="home">
           <div className="hero-content">
-            <p className="eyebrow">Capstone System</p>
             <h1>Quarterly Item Analysis & Academic Performance Consolidation</h1>
             <p>
-              Convert assessment results into clear instructional actions with role-based dashboards,
-              item analytics, and quarterly reporting for teachers and administrators.
+              A single system for teacher workflows and administrator oversight—from exam uploads
+              to item analysis, school-wide reporting, and quarterly performance monitoring.
             </p>
             <div className="hero-actions">
-              <Link className="hero-btn primary" to="/auth?mode=login&role=teacher">Login as Teacher</Link>
-              <Link className="hero-btn ghost" to="/auth?mode=login&role=administrator">Login as Admin</Link>
+              <a className="hero-btn primary" href="#auth">Teacher Access</a>
+              <a className="hero-btn ghost" href="#auth">Administrator Access</a>
             </div>
           </div>
 
-          <article className="hero-panel">
-            <div className="panel-header">
-              <span>Grade 7 - Q1 Analysis</span>
-              <span className="chip">Live</span>
-            </div>
-            <div className="panel-grid">
-              <div><p>Average Score</p><h3>76.8%</h3></div>
-              <div><p>Pass Rate</p><h3>79%</h3></div>
-              <div><p>Students</p><h3>540</h3></div>
-              <div><p>Total Items</p><h3>120</h3></div>
-            </div>
-            <div className="preview-bars">
-              <span style={{ height: '76%' }} />
-              <span style={{ height: '79%' }} />
-              <span style={{ height: '82%' }} />
-              <span style={{ height: '85%' }} />
-            </div>
-          </article>
-        </section>
+          <section className="auth-plain" id="auth" aria-labelledby="authTitle">
+            <h2 id="authTitle">{mode === 'login' ? 'Welcome Back!' : 'Create an account'}</h2>
+            <p className="auth-plain-subtitle">
+              {mode === 'login'
+                ? 'Sign in to continue your assessment journey.'
+                : 'Sign up to start your quarterly item analysis workflow.'}
+            </p>
 
-        <section className="modules" id="modules">
-          <h2>Designed for every academic role</h2>
-          <p>Workflows tailored for teachers, department heads, and admins.</p>
-          <div className="module-grid">
-            <article>
-              <h3>Auth & Roles</h3>
-              <p>Secure teacher and administrator access with dedicated screens.</p>
-            </article>
-            <article>
-              <h3>Exam Management</h3>
-              <p>Upload and validate quarterly exam results by grade and section.</p>
-            </article>
-            <article>
-              <h3>Analytics Engine</h3>
-              <p>Compute item difficulty, discrimination, and performance trends instantly.</p>
-            </article>
-            <article>
-              <h3>Reporting Suite</h3>
-              <p>Generate evidence-ready reports and track least-mastered competencies.</p>
-            </article>
-          </div>
+            <div className="auth-role-toggle" role="tablist" aria-label="Role selection">
+              <button type="button" className={role === 'teacher' ? 'active' : ''} onClick={() => setRole('teacher')}>Teacher</button>
+              <button type="button" className={role === 'administrator' ? 'active' : ''} onClick={() => setRole('administrator')}>Administrator</button>
+            </div>
+
+            <form className="inline-auth-form" onSubmit={handleAuthSubmit}>
+              {mode === 'signup' && (
+                <label>
+                  Full name
+                  <input type="text" required placeholder="Enter your full name" />
+                </label>
+              )}
+              <label>
+                Email
+                <input type="email" required placeholder="name@school.edu" />
+              </label>
+              <label>
+                Password
+                <div className="password-field">
+                  <input type={showPassword ? 'text' : 'password'} required placeholder="Enter your password" />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </label>
+
+              {mode === 'login' && (
+                <div className="auth-meta-row">
+                  <label className="remember-row">
+                    <input type="checkbox" />
+                    Remember me
+                  </label>
+                  <button type="button" className="auth-link-btn" onClick={() => setShowResetHint(true)}>
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              {showResetHint && mode === 'login' && (
+                <p className="auth-hint">Contact your school administrator to reset your credentials.</p>
+              )}
+
+              {mode === 'signup' && (
+                <label>
+                  Confirm password
+                  <input type="password" required placeholder="Confirm your password" />
+                </label>
+              )}
+              <button className="hero-btn primary inline-submit" type="submit">
+                {mode === 'login' ? 'Log In' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="auth-divider"><span>or continue with</span></div>
+
+            <button type="button" className="google-btn" onClick={continueWithGoogle}>
+              <span>G</span>
+              Continue with Google
+            </button>
+
+            <p className="inline-auth-note">By signing in, you agree to our Terms and Privacy Policy.</p>
+            <p className="auth-switch">
+              {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}
+              <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setShowResetHint(false); }}>
+                {mode === 'login' ? 'Create an account' : 'Log in'}
+              </button>
+            </p>
+          </section>
         </section>
 
         <section className="workflow" id="workflow">
-          <h2>From upload to insights in three steps</h2>
-          <p>Automate the full quarterly cycle without manual spreadsheets.</p>
-          <div className="timeline">
+          <h2>How Quarterly Insight Hub works</h2>
+          <div className="step-grid">
             <article>
-              <span>01</span>
-              <h3>Upload exam results</h3>
-              <p>Teachers upload CSV and section-level scores securely.</p>
+              <span>1</span>
+              <h3>Sign In</h3>
+              <p>Teachers and administrators securely access the platform.</p>
             </article>
             <article>
-              <span>02</span>
-              <h3>Run item analysis</h3>
-              <p>System computes indices and class-level mastery trends.</p>
+              <span>2</span>
+              <h3>Upload Data</h3>
+              <p>Submit class results and assessment records per quarter.</p>
             </article>
             <article>
-              <span>03</span>
-              <h3>Publish reports</h3>
-              <p>Admins review dashboards and generate quarterly performance summaries.</p>
+              <span>3</span>
+              <h3>Analyze</h3>
+              <p>Generate item analysis and performance trends instantly.</p>
+            </article>
+            <article>
+              <span>4</span>
+              <h3>Consolidate</h3>
+              <p>Review school-wide insights for data-driven planning.</p>
             </article>
           </div>
         </section>
 
-        <section className="reporting" id="reports">
-          <div className="reporting-card">
-          <h2>Ready to start your quarterly insight cycle?</h2>
-          <p>Choose your role and continue to the authentication page.</p>
-          <div className="hero-actions">
-            <Link className="hero-btn primary" to="/auth?mode=login&role=teacher">Teacher Access</Link>
-            <Link className="hero-btn ghost" to="/auth?mode=login&role=administrator">Administrator Access</Link>
-          </div>
+        <section className="modules" id="modules">
+          <div className="module-grid">
+            <article>
+              <h3>For Teachers</h3>
+              <ul>
+                <li>Upload exam outcomes per class and subject.</li>
+                <li>View item-level difficulty and discrimination.</li>
+                <li>Monitor progress across grading periods.</li>
+                <li>Export class-level summaries for reporting.</li>
+              </ul>
+            </article>
+            <article>
+              <h3>For Administrators</h3>
+              <ul>
+                <li>Track grade-level and school-wide indicators.</li>
+                <li>Compare performance trends across departments.</li>
+                <li>Identify learning gaps through analytics.</li>
+                <li>Use consolidated insights for planning actions.</li>
+              </ul>
+            </article>
           </div>
         </section>
+
+        <footer className="site-footer">
+          <div className="footer-grid">
+            <div>
+              <h3>Quarterly Insights Hub</h3>
+              <p>Helping schools transform assessment data into actionable decisions.</p>
+            </div>
+            <div>
+              <h4>Modules</h4>
+              <p>Authentication</p>
+              <p>Item Analysis</p>
+              <p>Performance Monitoring</p>
+            </div>
+            <div>
+              <h4>Company</h4>
+              <p>About</p>
+              <p>Terms of Service</p>
+              <p>Privacy Policy</p>
+            </div>
+          </div>
+          <p className="footer-copy">© 2026 Quarterly Insights Hub. All rights reserved.</p>
+        </footer>
       </main>
     </div>
   );

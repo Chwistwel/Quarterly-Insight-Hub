@@ -1,0 +1,88 @@
+import { useEffect, useState } from 'react';
+import TeacherLayout from './TeacherLayout';
+import { getReportsData, type ReportsResponse } from '../../services/teacherPortalApi';
+import '../../styles/TEACHER/MyReports.css';
+
+function MyReports() {
+	const [data, setData] = useState<ReportsResponse | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		const load = async () => {
+			setLoading(true);
+			setError(null);
+
+			try {
+				const response = await getReportsData();
+				setData(response);
+			} catch (loadError) {
+				setData(null);
+				setError(loadError instanceof Error ? loadError.message : 'Unable to load reports.');
+			} finally {
+				setLoading(false);
+			}
+		};
+
+		void load();
+	}, []);
+
+	return (
+		<TeacherLayout title={data?.title ?? ''}>
+			{data?.systemLabel || data?.title || data?.viewLabel ? (
+				<section className="teacher-dash-heading teacher-page-heading">
+					{data?.systemLabel ? <p>{data.systemLabel}</p> : null}
+					<div>
+						{data?.title ? <h2>{data.title}</h2> : null}
+						{data?.viewLabel ? <span>{data.viewLabel}</span> : null}
+					</div>
+				</section>
+			) : null}
+
+			{data?.subtitle ? <p className="teacher-page-subtitle">{data.subtitle}</p> : null}
+
+			{loading ? <p className="teacher-status">Loading reports...</p> : null}
+			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
+
+			<div className="reports-action-grid">
+				{data?.actions?.length ? (
+					data.actions.map((action) => (
+						<article key={action.id} className="teacher-card reports-action-card">
+							<h3>{action.title}</h3>
+							<p>{action.description}</p>
+							<button type="button" className="teacher-primary-btn reports-action-btn">{action.buttonLabel}</button>
+						</article>
+					))
+				) : (
+					<p className="teacher-status">No report actions available.</p>
+				)}
+			</div>
+
+			<section className="teacher-panel">
+				<h2>Available Reports</h2>
+				{data?.summary ? <p className="teacher-panel-copy">{data.summary}</p> : null}
+				{data?.reports?.length ? (
+					<div className="reports-grid">
+						{data.reports.map((report) => (
+							<article key={report.id} className="reports-card">
+								<div className="reports-card-head">
+									<strong>{report.title}</strong>
+									<button type="button" className="teacher-secondary-btn">Download</button>
+								</div>
+								<p>{report.category}</p>
+								<div className="reports-card-meta">
+									<span>{report.updatedAt}</span>
+									<span>{report.status}</span>
+								</div>
+							</article>
+						))}
+					</div>
+				) : (
+					<p className="teacher-status">No reports available.</p>
+				)}
+			</section>
+		</TeacherLayout>
+	);
+}
+
+export default MyReports;
