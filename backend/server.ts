@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import multer from 'multer';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import Teacher from './models/Teacher.js';
+import Administrator from './models/Administrator.js';
 
 // 1. Load environment variables from .env file
 dotenv.config();
@@ -34,6 +37,44 @@ type ComputedItem = {
     discrimination: number;
     interpretation: string;
 };
+
+type UserRole = 'teacher' | 'administrator';
+type RequestWithFile = Request & { file?: { buffer: Buffer } };
+
+function isSupportedRole(role: unknown): role is UserRole {
+    return role === 'teacher' || role === 'administrator';
+}
+
+function getModelByRole(role: UserRole) {
+    return role === 'teacher' ? Teacher : Administrator;
+}
+
+function normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+}
+
+function hashPassword(password: string): string {
+    const salt = randomBytes(16).toString('hex');
+    const hash = scryptSync(password, salt, 64).toString('hex');
+    return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+    const [salt, originalHash] = storedHash.split(':');
+
+    if (!salt || !originalHash) {
+        return false;
+    }
+
+    const passwordHash = scryptSync(password, salt, 64);
+    const savedHashBuffer = Buffer.from(originalHash, 'hex');
+
+    if (passwordHash.byteLength !== savedHashBuffer.byteLength) {
+        return false;
+    }
+
+    return timingSafeEqual(passwordHash, savedHashBuffer);
+}
 
 function parseCsvLine(line: string): string[] {
     const values: string[] = [];
@@ -98,8 +139,15 @@ function pearsonCorrelation(first: number[], second: number[]): number {
     let secondDenominator = 0;
 
     for (let index = 0; index < first.length; index += 1) {
-        const firstDiff = first[index] - firstMean;
-        const secondDiff = second[index] - secondMean;
+        const firstValue = first[index];
+        const secondValue = second[index];
+
+        if (firstValue === undefined || secondValue === undefined) {
+            continue;
+        }
+
+        const firstDiff = firstValue - firstMean;
+        const secondDiff = secondValue - secondMean;
         numerator += firstDiff * secondDiff;
         firstDenominator += firstDiff ** 2;
         secondDenominator += secondDiff ** 2;
@@ -141,7 +189,13 @@ function computeItemAnalysis(csvText: string) {
         throw new Error('File must include a header row and at least one data row.');
     }
 
-    const headers = parseCsvLine(rows[0]).map((header) => header.trim());
+    const headerRow = rows[0];
+
+    if (!headerRow) {
+        throw new Error('Header row is missing.');
+    }
+
+    const headers = parseCsvLine(headerRow).map((header) => header.trim());
     const lowerHeaders = headers.map((header) => header.toLowerCase());
 
     const commonNonItemColumns = new Set([
@@ -163,7 +217,7 @@ function computeItemAnalysis(csvText: string) {
     const likelyItemIndexes = headers
         .map((header, index) => ({ header, index }))
         .filter(({ header, index }) => {
-            const lowerHeader = lowerHeaders[index];
+            const lowerHeader = lowerHeaders[index] ?? '';
             const looksLikeItem = /^q\d+$/i.test(header) || /^item\s*\d+$/i.test(header) || /^item_?\d+$/i.test(lowerHeader);
             return looksLikeItem || !commonNonItemColumns.has(lowerHeader);
         })
@@ -173,7 +227,7 @@ function computeItemAnalysis(csvText: string) {
 
     const numericColumnIndexes = likelyItemIndexes.filter((index) => {
         const values = rawRowValues
-            .map((values) => Number(values[index]))
+            .map((values) => Number(values[index] ?? Number.NaN))
             .filter((value) => Number.isFinite(value));
 
         return values.length > 0;
@@ -185,20 +239,20 @@ function computeItemAnalysis(csvText: string) {
 
     const normalizedRows: number[][] = rawRowValues.map((rowValues) =>
         numericColumnIndexes.map((index) => {
-            const parsed = Number(rowValues[index]);
+            const parsed = Number(rowValues[index] ?? Number.NaN);
             return Number.isFinite(parsed) ? parsed : 0;
         })
     );
 
     const columnMaxima = numericColumnIndexes.map((_, columnIndex) => {
-        const values = normalizedRows.map((row) => row[columnIndex]);
+        const values = normalizedRows.map((row) => row[columnIndex] ?? 0);
         const maxValue = Math.max(...values, 1);
         return maxValue <= 0 ? 1 : maxValue;
     });
 
     const scaledRows = normalizedRows.map((row) =>
         row.map((value, columnIndex) => {
-            const scaled = value / columnMaxima[columnIndex];
+            const scaled = value / (columnMaxima[columnIndex] ?? 1);
             return Math.min(1, Math.max(0, scaled));
         })
     );
@@ -206,9 +260,10 @@ function computeItemAnalysis(csvText: string) {
     const totals = scaledRows.map((row) => row.reduce((runningTotal, value) => runningTotal + value, 0));
 
     const computedItems: ComputedItem[] = numericColumnIndexes.map((index, columnIndex) => {
-        const itemName = /^q\d+$/i.test(headers[index]) ? headers[index].toUpperCase() : `Q${columnIndex + 1}`;
-        const itemValues = scaledRows.map((row) => row[columnIndex]);
-        const totalWithoutItem = scaledRows.map((row, rowIndex) => totals[rowIndex] - row[columnIndex]);
+        const headerValue = headers[index] ?? `Q${columnIndex + 1}`;
+        const itemName = /^q\d+$/i.test(headerValue) ? headerValue.toUpperCase() : `Q${columnIndex + 1}`;
+        const itemValues = scaledRows.map((row) => row[columnIndex] ?? 0);
+        const totalWithoutItem = scaledRows.map((row, rowIndex) => (totals[rowIndex] ?? 0) - (row[columnIndex] ?? 0));
         const difficulty = average(itemValues);
         const discrimination = pearsonCorrelation(itemValues, totalWithoutItem);
 
@@ -360,6 +415,121 @@ app.get('/api/student-records', (req: Request, res: Response) => {
     });
 });
 
+app.post('/api/auth/signup', async (req: Request, res: Response) => {
+    const { firstName, lastName, email, password, confirmPassword, role } = req.body as {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        password?: string;
+        confirmPassword?: string;
+        role?: string;
+    };
+
+    if (!isSupportedRole(role)) {
+        return res.status(400).json({ message: 'Please select either teacher or administrator.' });
+    }
+
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !password?.trim() || !confirmPassword?.trim()) {
+        return res.status(400).json({ message: 'First name, last name, email, password, and confirm password are required.' });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+
+    if (!isValidEmail) {
+        return res.status(400).json({ message: 'Please provide a valid email address.' });
+    }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Passwords do not match.' });
+    }
+
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    }
+
+    try {
+        const UserModel = getModelByRole(role) as mongoose.Model<any>;
+        const existingUser = await UserModel.findOne({ email: normalizedEmail }).lean();
+
+        if (existingUser) {
+            return res.status(409).json({ message: 'An account with this email already exists for the selected role.' });
+        }
+
+        const createdUser = await UserModel.create({
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: normalizedEmail,
+            passwordHash: hashPassword(password)
+        }) as {
+            _id: unknown;
+            firstName: string;
+            lastName: string;
+            email: string;
+        };
+
+        return res.status(201).json({
+            message: 'Account created successfully.',
+            user: {
+                id: createdUser._id,
+                role,
+                firstName: createdUser.firstName,
+                lastName: createdUser.lastName,
+                email: createdUser.email
+            }
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create account.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+    const { email, password, role } = req.body as {
+        email?: string;
+        password?: string;
+        role?: string;
+    };
+
+    if (!isSupportedRole(role)) {
+        return res.status(400).json({ message: 'Please select either teacher or administrator.' });
+    }
+
+    if (!email?.trim() || !password?.trim()) {
+        return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    try {
+        const UserModel = getModelByRole(role) as mongoose.Model<any>;
+        const normalizedEmail = normalizeEmail(email);
+        const user = await UserModel.findOne({ email: normalizedEmail }).lean() as {
+            _id: unknown;
+            firstName: string;
+            lastName: string;
+            email: string;
+            passwordHash: string;
+        } | null;
+
+        if (!user || !verifyPassword(password, user.passwordHash)) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
+
+        return res.json({
+            message: 'Login successful.',
+            user: {
+                id: user._id,
+                role,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email
+            }
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to login.';
+        return res.status(500).json({ message });
+    }
+});
+
 app.get('/teacher/dashboard', async (_req: Request, res: Response) => {
     try {
         const document = await fetchCollectionDocument<Record<string, unknown>>('teacher_dashboard');
@@ -443,12 +613,14 @@ app.get('/teacher/reports', async (_req: Request, res: Response) => {
 });
 
 app.post('/api/item-analysis/compute', upload.single('file'), (req: Request, res: Response) => {
-    if (!req.file) {
+    const requestWithFile = req as RequestWithFile;
+
+    if (!requestWithFile.file) {
         return res.status(400).json({ message: 'No file uploaded. Use form-data field name "file".' });
     }
 
     try {
-        const csvText = req.file.buffer.toString('utf-8');
+        const csvText = requestWithFile.file.buffer.toString('utf-8');
         const analysis = computeItemAnalysis(csvText);
         return res.json(analysis);
     } catch (error) {
