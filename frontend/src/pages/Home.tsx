@@ -1,10 +1,38 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchJson } from '../services/api';
 import '../styles/Home.css';
 
 type AuthMode = 'login' | 'signup';
 type UserRole = 'teacher' | 'administrator';
+
+type AuthFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
+
+const initialFormState: AuthFormState = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+  confirmPassword: ''
+};
+
+type AuthResponse = {
+  message: string;
+  user: {
+    id: string;
+    role: UserRole;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+};
 
 function Home() {
   const navigate = useNavigate();
@@ -12,11 +40,73 @@ function Home() {
   const [role, setRole] = useState<UserRole>('teacher');
   const [showResetHint, setShowResetHint] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [formState, setFormState] = useState<AuthFormState>(initialFormState);
+  const [submitting, setSubmitting] = useState(false);
+  const [authError, setAuthError] = useState('');
 
-  const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = event.target;
+    setFormState((previous) => ({
+      ...previous,
+      [name]: value
+    }));
+  };
+
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    localStorage.setItem('userRole', role);
-    navigate(role === 'teacher' ? '/teacher/dashboard' : '/');
+    setAuthError('');
+
+    if (mode === 'signup' && formState.password !== formState.confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      if (mode === 'signup') {
+        await fetchJson<AuthResponse>('/api/auth/signup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            role,
+            firstName: formState.firstName,
+            lastName: formState.lastName,
+            email: formState.email,
+            password: formState.password,
+            confirmPassword: formState.confirmPassword
+          })
+        });
+      } else {
+        await fetchJson<AuthResponse>('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            role,
+            email: formState.email,
+            password: formState.password
+          })
+        });
+      }
+
+      localStorage.setItem('userRole', role);
+      navigate(role === 'teacher' ? '/teacher/dashboard' : '/');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Unable to continue. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleAuthMode = () => {
+    setMode((currentMode) => (currentMode === 'login' ? 'signup' : 'login'));
+    setShowResetHint(false);
+    setAuthError('');
+    setFormState(initialFormState);
   };
 
   const continueWithGoogle = () => {
@@ -66,19 +156,55 @@ function Home() {
 
             <form className="inline-auth-form" onSubmit={handleAuthSubmit}>
               {mode === 'signup' && (
-                <label>
-                  Full name
-                  <input type="text" required placeholder="Enter your full name" />
-                </label>
+                <div className="name-grid">
+                  <label>
+                    First name
+                    <input
+                      type="text"
+                      name="firstName"
+                      required
+                      value={formState.firstName}
+                      onChange={handleInputChange}
+                      placeholder="Enter your first name"
+                    />
+                  </label>
+                  <label>
+                    Last name
+                    <input
+                      type="text"
+                      name="lastName"
+                      required
+                      value={formState.lastName}
+                      onChange={handleInputChange}
+                      placeholder="Enter your last name"
+                    />
+                  </label>
+                </div>
               )}
               <label>
                 Email
-                <input type="email" required placeholder="name@school.edu" />
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  value={formState.email}
+                  onChange={handleInputChange}
+                  placeholder="name@school.edu"
+                  autoComplete="email"
+                />
               </label>
               <label>
                 Password
                 <div className="password-field">
-                  <input type={showPassword ? 'text' : 'password'} required placeholder="Enter your password" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    required
+                    value={formState.password}
+                    onChange={handleInputChange}
+                    placeholder="Enter your password"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  />
                   <button
                     type="button"
                     className="password-toggle"
@@ -109,11 +235,22 @@ function Home() {
               {mode === 'signup' && (
                 <label>
                   Confirm password
-                  <input type="password" required placeholder="Confirm your password" />
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    required
+                    value={formState.confirmPassword}
+                    onChange={handleInputChange}
+                    placeholder="Confirm your password"
+                    autoComplete="new-password"
+                  />
                 </label>
               )}
-              <button className="hero-btn primary inline-submit" type="submit">
-                {mode === 'login' ? 'Log In' : 'Create Account'}
+
+              {authError ? <p className="auth-feedback error">{authError}</p> : null}
+
+              <button className="hero-btn primary inline-submit" type="submit" disabled={submitting}>
+                {submitting ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Create Account'}
               </button>
             </form>
 
@@ -127,7 +264,7 @@ function Home() {
             <p className="inline-auth-note">By signing in, you agree to our Terms and Privacy Policy.</p>
             <p className="auth-switch">
               {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}
-              <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setShowResetHint(false); }}>
+              <button type="button" onClick={toggleAuthMode}>
                 {mode === 'login' ? 'Create an account' : 'Log in'}
               </button>
             </p>
