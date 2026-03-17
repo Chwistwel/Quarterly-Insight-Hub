@@ -26,10 +26,27 @@
 	color: var(--brand);
 }
 
+.upload-dropzone-icon {
+	display: grid;
+	place-items: center;
+	font-size: 1.6rem;
+	line-height: 1;
+	margin-top: 0.3rem;
+	color: var(--text-secondary);
+}
+
 .upload-dropzone small {
 	display: block;
 	margin-top: 0.45rem;
 	font-size: 0.8rem;
+}
+
+.upload-dropzone em {
+	display: block;
+	margin-top: 0.2rem;
+	font-size: 0.72rem;
+	font-style: normal;
+	color: var(--text-secondary);
 }
 
 .upload-instructions-panel {
@@ -76,6 +93,16 @@
 
 .upload-recent-list li {
 	background: var(--surface);
+}
+
+.upload-recent-list li span {
+	font-weight: 700;
+	font-size: 0.86rem;
+}
+
+.upload-recent-list li small {
+	font-size: 0.72rem;
+	color: var(--text-secondary) !important;
 }
 
 .upload-status-done {

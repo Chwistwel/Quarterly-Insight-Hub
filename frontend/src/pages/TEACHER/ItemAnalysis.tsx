@@ -1,13 +1,37 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
 import { getItemAnalysisData, type ItemAnalysisResponse } from '../../services/teacherPortalApi';
 import '../../styles/TEACHER/ItemAnalysis.css';
 
 function ItemAnalysis() {
+	const navigate = useNavigate();
 	const [data, setData] = useState<ItemAnalysisResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedView, setSelectedView] = useState('all');
+
+	const filteredRows = (data?.rows ?? []).filter((row) => {
+		if (selectedView === 'all') {
+			return true;
+		}
+
+		const normalized = row.interpretation.toLowerCase();
+
+		if (selectedView === 'excellent') {
+			return normalized.includes('excellent');
+		}
+
+		if (selectedView === 'good') {
+			return normalized.includes('good');
+		}
+
+		if (selectedView === 'needs') {
+			return normalized.includes('poor') || normalized.includes('needs') || normalized.includes('fair');
+		}
+
+		return true;
+	});
 
 	const getInterpretationClass = (interpretation: string) => {
 		const normalized = interpretation.toLowerCase();
@@ -41,9 +65,17 @@ function ItemAnalysis() {
 		<TeacherLayout title={data?.title ?? 'My Item Analysis'}>
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'COMPREHENSIVE ITEM ANALYSIS'}</p>
-				<div>
+				<div className="teacher-heading-row">
 					<h2>{data?.title ?? 'My Item Analysis'}</h2>
-					<span>{data?.viewLabel ?? 'Teacher View'}</span>
+					<div className="teacher-heading-actions">
+						<button
+							type="button"
+							className="teacher-item-analysis-upload-btn"
+							onClick={() => navigate('/teacher/upload-results')}
+						>
+							Upload Results
+						</button>
+					</div>
 				</div>
 			</section>
 
@@ -87,7 +119,7 @@ function ItemAnalysis() {
 
 			<section className="teacher-panel">
 				<h2>Item Analysis</h2>
-				{data?.rows?.length ? (
+				{filteredRows.length ? (
 					<div className="teacher-table-wrap">
 						<table className="teacher-table">
 							<thead>
@@ -99,7 +131,7 @@ function ItemAnalysis() {
 								</tr>
 							</thead>
 							<tbody>
-								{data.rows.map((row) => (
+								{filteredRows.map((row) => (
 									<tr key={`${row.itemNo}-${row.interpretation}`}>
 										<td>{row.itemNo}</td>
 										<td>{row.difficultyIndex}</td>

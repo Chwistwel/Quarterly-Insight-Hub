@@ -19,20 +19,20 @@ const AnalysisIcon = () => (
 	</svg>
 );
 
-const UploadIcon = () => (
-	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M12 16V5" />
-		<path d="M8 9l4-4 4 4" />
-		<path d="M5 19h14" />
-	</svg>
-);
-
 const ReportsIcon = () => (
 	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
 		<path d="M7 4h7l4 4v12H7z" />
 		<path d="M14 4v4h4" />
 		<line x1="10" y1="13" x2="15" y2="13" />
 		<line x1="10" y1="17" x2="15" y2="17" />
+	</svg>
+);
+
+const ClassesIcon = () => (
+	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+		<rect x="4" y="5" width="7" height="14" rx="1" />
+		<rect x="13" y="5" width="7" height="14" rx="1" />
+		<line x1="11" y1="7" x2="13" y2="7" />
 	</svg>
 );
 
@@ -47,6 +47,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 
 	const handleLogout = () => {
 		localStorage.removeItem('userRole');
+		localStorage.removeItem('userProfile');
 		navigate('/');
 	};
 
@@ -70,9 +71,9 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 						<span className="teacher-menu-item-icon"><AnalysisIcon /></span>
 						<span className="teacher-menu-item-label">Item Analysis</span>
 					</NavLink>
-					<NavLink to="/teacher/upload-results" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
-						<span className="teacher-menu-item-icon"><UploadIcon /></span>
-						<span className="teacher-menu-item-label">Upload Results</span>
+					<NavLink to="/teacher/my-classes" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+						<span className="teacher-menu-item-icon"><ClassesIcon /></span>
+						<span className="teacher-menu-item-label">My Classes</span>
 					</NavLink>
 					<NavLink to="/teacher/my-reports" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><ReportsIcon /></span>

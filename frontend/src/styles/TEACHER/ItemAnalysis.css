@@ -4,6 +4,37 @@
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.teacher-heading-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.7rem;
+	flex-wrap: wrap;
+}
+
+.teacher-heading-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.teacher-item-analysis-upload-btn {
+	height: 34px;
+	border: 1px solid var(--border-strong);
+	border-radius: 999px;
+	padding: 0 0.75rem;
+	background: var(--surface);
+	color: var(--brand);
+	font-size: 0.78rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.teacher-item-analysis-upload-btn:hover {
+	background: var(--surface-soft);
+}
+
 .teacher-tabs-wrap {
 	max-width: 100%;
 	overflow-x: auto;
@@ -78,5 +109,9 @@
 @media (max-width: 900px) {
 	.teacher-kpis-3 {
 		grid-template-columns: 1fr;
+	}
+
+	.teacher-heading-row {
+		align-items: flex-start;
 	}
 }

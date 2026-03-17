@@ -66,7 +66,6 @@ function Dashboard() {
 				<p>{data?.systemLabel ?? 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM'}</p>
 				<div>
 					<h2>{data?.title ?? 'My Dashboard'}</h2>
-					<span>{data?.viewLabel ?? 'Teacher View'}</span>
 				</div>
 			</section>
 
@@ -166,21 +165,6 @@ function Dashboard() {
 				</section>
 			</div>
 
-			<section className="teacher-panel">
-				<h2>Additional Highlights</h2>
-				{data?.highlights?.length ? (
-					<ul className="teacher-highlight-list">
-						{data.highlights.map((item) => (
-							<li key={item.label}>
-								<span>{item.label}</span>
-								<strong>{item.value}</strong>
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className="teacher-status">No highlights available.</p>
-				)}
-			</section>
 		</TeacherLayout>
 	);
 }

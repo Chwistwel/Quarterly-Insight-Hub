@@ -32,9 +32,8 @@ function UploadResults() {
 		<TeacherLayout title={data?.title ?? 'Upload Quarterly Exam Results'}>
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'UPLOAD AND ANALYZE STUDENT PERFORMANCE DATA'}</p>
-				<div>
+				<div className="teacher-heading-row">
 					<h2>{data?.title ?? 'Upload Quarterly Exam Results'}</h2>
-					<span>{data?.viewLabel ?? 'Teacher View'}</span>
 				</div>
 			</section>
 
@@ -78,7 +77,9 @@ function UploadResults() {
 									type="file"
 									onChange={(event) => setSelectedFileName(event.target.files?.[0]?.name ?? '')}
 								/>
+								<strong className="upload-dropzone-icon">📄</strong>
 								<small>{selectedFileName || 'Drag and drop your file or click to browse'}</small>
+								<em>Supports CSV, XLSX, XLS files</em>
 							</label>
 
 							<button className="teacher-primary-btn" type="submit">Submit Results</button>
@@ -93,6 +94,7 @@ function UploadResults() {
 									<li key={upload.fileName}>
 										<div>
 											<span>{upload.fileName}</span>
+											<small>{upload.uploadedAt ?? 'N/A'}</small>
 										</div>
 										<strong className="upload-status-done">{upload.status}</strong>
 									</li>

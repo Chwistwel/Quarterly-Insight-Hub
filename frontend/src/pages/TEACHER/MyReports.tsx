@@ -31,9 +31,8 @@ function MyReports() {
 		<TeacherLayout title={data?.title ?? 'My Reports'}>
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'REPORT GENERATION CENTER'}</p>
-				<div>
+				<div className="teacher-heading-row">
 					<h2>{data?.title ?? 'My Reports'}</h2>
-					<span>{data?.viewLabel ?? 'Teacher View'}</span>
 				</div>
 			</section>
 
@@ -46,8 +45,8 @@ function MyReports() {
 
 			<div className="reports-action-grid">
 				{data?.actions?.length ? (
-					data.actions.map((action) => (
-						<article key={action.id} className="teacher-card reports-action-card">
+					data.actions.map((action, index) => (
+						<article key={action.id} className={`teacher-card reports-action-card reports-action-card-${index + 1}`}>
 							<h3>{action.title}</h3>
 							<p>{action.description}</p>
 							<button type="button" className="teacher-primary-btn reports-action-btn">{action.buttonLabel}</button>
@@ -72,7 +71,7 @@ function MyReports() {
 								<p>{report.category}</p>
 								<div className="reports-card-meta">
 									<span>{report.updatedAt}</span>
-									<span>{report.status}</span>
+									<span>{report.size}</span>
 								</div>
 							</article>
 						))}

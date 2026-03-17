@@ -1,6 +1,10 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
 export function getApiUrl(path: string): string {
+	if (typeof path !== 'string' || path.trim().length === 0) {
+		throw new Error('Invalid API path.');
+	}
+
 	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 	return `${API_BASE_URL}${normalizedPath}`;
 }

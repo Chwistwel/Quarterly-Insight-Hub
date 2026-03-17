@@ -41,6 +41,35 @@ type ComputedItem = {
 type UserRole = 'teacher' | 'administrator';
 type RequestWithFile = Request & { file?: { buffer: Buffer } };
 
+type MemoryUser = {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    passwordHash: string;
+};
+
+type PersistedUser = {
+    _id?: unknown;
+    id?: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    passwordHash?: string;
+};
+
+type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
+    role: UserRole;
+    user: TUser;
+};
+
+const USE_IN_MEMORY_AUTH_FALLBACK = (process.env.USE_IN_MEMORY_AUTH_FALLBACK ?? 'true').toLowerCase() !== 'false';
+const USER_ROLES: UserRole[] = ['teacher', 'administrator'];
+const memoryUsersByRole: Record<UserRole, Map<string, MemoryUser>> = {
+    teacher: new Map<string, MemoryUser>(),
+    administrator: new Map<string, MemoryUser>()
+};
+
 function isSupportedRole(role: unknown): role is UserRole {
     return role === 'teacher' || role === 'administrator';
 }
@@ -51,6 +80,48 @@ function getModelByRole(role: UserRole) {
 
 function normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+}
+
+function isDatabaseReady(): boolean {
+    return mongoose.connection.readyState === 1;
+}
+
+function getMemoryStoreByRole(role: UserRole): Map<string, MemoryUser> {
+    return memoryUsersByRole[role];
+}
+
+function findMemoryUsersByEmail(normalizedEmail: string): UserLookupResult<MemoryUser>[] {
+    return USER_ROLES.flatMap((role) => {
+        const user = getMemoryStoreByRole(role).get(normalizedEmail);
+        return user ? [{ role, user }] : [];
+    });
+}
+
+async function findDatabaseUsersByEmail(normalizedEmail: string): Promise<UserLookupResult[]> {
+    const matches: UserLookupResult[] = [];
+
+    await Promise.all(
+        USER_ROLES.map(async (role) => {
+            const UserModel = getModelByRole(role) as mongoose.Model<any>;
+            const user = await UserModel.findOne({ email: normalizedEmail }).lean() as PersistedUser | null;
+
+            if (user) {
+                matches.push({ role, user });
+            }
+        })
+    );
+
+    return matches;
+}
+
+function buildAuthUser(role: UserRole, user: PersistedUser) {
+    return {
+        id: user._id ?? user.id,
+        role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email
+    };
 }
 
 function hashPassword(password: string): string {
@@ -448,13 +519,45 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
     }
 
-    try {
-        const UserModel = getModelByRole(role) as mongoose.Model<any>;
-        const existingUser = await UserModel.findOne({ email: normalizedEmail }).lean();
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const existingFallbackUsers = findMemoryUsersByEmail(normalizedEmail);
 
-        if (existingUser) {
-            return res.status(409).json({ message: 'An account with this email already exists for the selected role.' });
+        if (existingFallbackUsers.length > 0) {
+            return res.status(409).json({ message: 'An account with this email already exists.' });
         }
+
+        const fallbackStore = getMemoryStoreByRole(role);
+
+        const fallbackUser: MemoryUser = {
+            id: randomBytes(12).toString('hex'),
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: normalizedEmail,
+            passwordHash: hashPassword(password)
+        };
+
+        fallbackStore.set(normalizedEmail, fallbackUser);
+
+        return res.status(201).json({
+            message: 'Account created successfully (temporary in-memory mode).',
+            user: buildAuthUser(role, fallbackUser)
+        });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const existingUsers = await findDatabaseUsersByEmail(normalizedEmail);
+
+        if (existingUsers.length > 0) {
+            return res.status(409).json({ message: 'An account with this email already exists.' });
+        }
+
+        const UserModel = getModelByRole(role) as mongoose.Model<any>;
 
         const createdUser = await UserModel.create({
             firstName: firstName.trim(),
@@ -470,13 +573,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
         return res.status(201).json({
             message: 'Account created successfully.',
-            user: {
-                id: createdUser._id,
-                role,
-                firstName: createdUser.firstName,
-                lastName: createdUser.lastName,
-                email: createdUser.email
-            }
+            user: buildAuthUser(role, createdUser)
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to create account.';
@@ -485,44 +582,68 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 });
 
 app.post('/api/auth/login', async (req: Request, res: Response) => {
-    const { email, password, role } = req.body as {
+    const { email, password } = req.body as {
         email?: string;
         password?: string;
-        role?: string;
     };
-
-    if (!isSupportedRole(role)) {
-        return res.status(400).json({ message: 'Please select either teacher or administrator.' });
-    }
 
     if (!email?.trim() || !password?.trim()) {
         return res.status(400).json({ message: 'Email and password are required.' });
     }
 
-    try {
-        const UserModel = getModelByRole(role) as mongoose.Model<any>;
-        const normalizedEmail = normalizeEmail(email);
-        const user = await UserModel.findOne({ email: normalizedEmail }).lean() as {
-            _id: unknown;
-            firstName: string;
-            lastName: string;
-            email: string;
-            passwordHash: string;
-        } | null;
+    const normalizedEmail = normalizeEmail(email);
 
-        if (!user || !verifyPassword(password, user.passwordHash)) {
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const matchingFallbackUsers = findMemoryUsersByEmail(normalizedEmail)
+            .filter(({ user }) => verifyPassword(password, user.passwordHash));
+
+        if (matchingFallbackUsers.length === 0) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
+
+        if (matchingFallbackUsers.length > 1) {
+            return res.status(409).json({ message: 'This email is assigned to multiple roles. Contact support to resolve the duplicate account.' });
+        }
+
+        const authenticatedUser = matchingFallbackUsers[0];
+
+        if (!authenticatedUser) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
+
+        return res.json({
+            message: 'Login successful (temporary in-memory mode).',
+            user: buildAuthUser(authenticatedUser.role, authenticatedUser.user)
+        });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const matchingUsers = (await findDatabaseUsersByEmail(normalizedEmail))
+            .filter(({ user }) => typeof user.passwordHash === 'string' && verifyPassword(password, user.passwordHash));
+
+        if (matchingUsers.length === 0) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
+
+        if (matchingUsers.length > 1) {
+            return res.status(409).json({ message: 'This email is assigned to multiple roles. Contact support to resolve the duplicate account.' });
+        }
+
+        const authenticatedUser = matchingUsers[0];
+
+        if (!authenticatedUser) {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
         return res.json({
             message: 'Login successful.',
-            user: {
-                id: user._id,
-                role,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                email: user.email
-            }
+            user: buildAuthUser(authenticatedUser.role, authenticatedUser.user)
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to login.';

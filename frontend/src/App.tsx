@@ -1,12 +1,21 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import Home from './pages/Home';
+import Auth from './pages/Auth';
+import SchoolOverview from './pages/ADMIN/SchoolOverview';
+import AdminItemAnalysis from './pages/ADMIN/ItemAnalysis';
+import TeacherPerformance from './pages/ADMIN/TeacherPerformance';
+import SchoolAnalytics from './pages/ADMIN/SchoolAnalytics';
+import AllReports from './pages/ADMIN/AllReports';
 import TeacherDashboard from './pages/TEACHER/Dashboard';
 import TeacherItemAnalysis from './pages/TEACHER/ItemAnalysis';
 import TeacherUploadResults from './pages/TEACHER/UploadResults';
 import TeacherMyReports from './pages/TEACHER/MyReports';
+import TeacherMyClasses from './pages/TEACHER/MyClasses';
+import TeacherStudentManagement from './pages/TEACHER/StudentManagement';
 
 type ThemeMode = 'light' | 'dark';
+type UserRole = 'teacher' | 'administrator';
 
 function getInitialTheme(): ThemeMode {
   const storedTheme = localStorage.getItem('themeMode');
@@ -15,6 +24,29 @@ function getInitialTheme(): ThemeMode {
   }
 
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getStoredUserRole(): UserRole | null {
+  const storedRole = localStorage.getItem('userRole');
+  return storedRole === 'teacher' || storedRole === 'administrator' ? storedRole : null;
+}
+
+function getRouteForRole(role: UserRole): string {
+  return role === 'administrator' ? '/admin/overview' : '/teacher/dashboard';
+}
+
+function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: ReactElement }) {
+  const storedRole = getStoredUserRole();
+
+  if (!storedRole) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (!allowedRoles.includes(storedRole)) {
+    return <Navigate to={getRouteForRole(storedRole)} replace />;
+  }
+
+  return children;
 }
 
 function App() {
@@ -29,11 +61,20 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/teacher" element={<Navigate to="/teacher/dashboard" replace />} />
-        <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
-        <Route path="/teacher/item-analysis" element={<TeacherItemAnalysis />} />
-        <Route path="/teacher/upload-results" element={<TeacherUploadResults />} />
-        <Route path="/teacher/my-reports" element={<TeacherMyReports />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><Navigate to="/teacher/dashboard" replace /></ProtectedRoute>} />
+        <Route path="/teacher/dashboard" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />
+        <Route path="/teacher/item-analysis" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherItemAnalysis /></ProtectedRoute>} />
+        <Route path="/teacher/my-classes" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMyClasses /></ProtectedRoute>} />
+        <Route path="/teacher/student-management" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherStudentManagement /></ProtectedRoute>} />
+        <Route path="/teacher/upload-results" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherUploadResults /></ProtectedRoute>} />
+        <Route path="/teacher/my-reports" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMyReports /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={['administrator']}><Navigate to="/admin/overview" replace /></ProtectedRoute>} />
+        <Route path="/admin/overview" element={<ProtectedRoute allowedRoles={['administrator']}><SchoolOverview /></ProtectedRoute>} />
+        <Route path="/admin/item-analysis" element={<ProtectedRoute allowedRoles={['administrator']}><AdminItemAnalysis /></ProtectedRoute>} />
+        <Route path="/admin/teacher-performance" element={<ProtectedRoute allowedRoles={['administrator']}><TeacherPerformance /></ProtectedRoute>} />
+        <Route path="/admin/school-analytics" element={<ProtectedRoute allowedRoles={['administrator']}><SchoolAnalytics /></ProtectedRoute>} />
+        <Route path="/admin/all-reports" element={<ProtectedRoute allowedRoles={['administrator']}><AllReports /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
