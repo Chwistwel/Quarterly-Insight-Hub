@@ -58,6 +58,14 @@ type PersistedUser = {
     passwordHash?: string;
 };
 
+type CredentialUserRecord = {
+    _id?: unknown;
+    firstName: string;
+    lastName: string;
+    email: string;
+    passwordHash: string;
+};
+
 type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
     role: UserRole;
     user: TUser;
@@ -496,19 +504,35 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
         role?: string;
     };
 
-    if (!isSupportedRole(role)) {
-        return res.status(400).json({ message: 'Please select either teacher or administrator.' });
+    void firstName;
+    void lastName;
+    void email;
+    void password;
+    void confirmPassword;
+    void role;
+
+    return res.status(403).json({
+        message: 'Self-signup is disabled. Ask an administrator to create your teacher account.'
+    });
+});
+
+app.post('/api/admin/teachers', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { firstName, lastName, email, password, confirmPassword } = req.body as {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        password?: string;
+        confirmPassword?: string;
+    };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can create teacher accounts.' });
     }
 
     if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !password?.trim() || !confirmPassword?.trim()) {
-        return res.status(400).json({ message: 'First name, last name, email, password, and confirm password are required.' });
-    }
-
-    const normalizedEmail = normalizeEmail(email);
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
-
-    if (!isValidEmail) {
-        return res.status(400).json({ message: 'Please provide a valid email address.' });
+        return res.status(400).json({ message: 'First name, last name, email/username, password, and confirm password are required.' });
     }
 
     if (password !== confirmPassword) {
@@ -519,28 +543,35 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
     }
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const existingFallbackUsers = findMemoryUsersByEmail(normalizedEmail);
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+    const normalizedTeacherEmail = normalizeEmail(email);
 
-        if (existingFallbackUsers.length > 0) {
-            return res.status(409).json({ message: 'An account with this email already exists.' });
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
         }
 
-        const fallbackStore = getMemoryStoreByRole(role);
+        const existingFallbackUsers = findMemoryUsersByEmail(normalizedTeacherEmail);
 
-        const fallbackUser: MemoryUser = {
+        if (existingFallbackUsers.length > 0) {
+            return res.status(409).json({ message: 'An account with this email/username already exists.' });
+        }
+
+        const fallbackTeacher: MemoryUser = {
             id: randomBytes(12).toString('hex'),
             firstName: firstName.trim(),
             lastName: lastName.trim(),
-            email: normalizedEmail,
+            email: normalizedTeacherEmail,
             passwordHash: hashPassword(password)
         };
 
-        fallbackStore.set(normalizedEmail, fallbackUser);
+        getMemoryStoreByRole('teacher').set(normalizedTeacherEmail, fallbackTeacher);
 
         return res.status(201).json({
-            message: 'Account created successfully (temporary in-memory mode).',
-            user: buildAuthUser(role, fallbackUser)
+            message: 'Teacher account created successfully (temporary in-memory mode).',
+            user: buildAuthUser('teacher', fallbackTeacher)
         });
     }
 
@@ -551,32 +582,33 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
     }
 
     try {
-        const existingUsers = await findDatabaseUsersByEmail(normalizedEmail);
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
 
-        if (existingUsers.length > 0) {
-            return res.status(409).json({ message: 'An account with this email already exists.' });
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can create teacher accounts.' });
         }
 
-        const UserModel = getModelByRole(role) as mongoose.Model<any>;
+        const existingUsers = await findDatabaseUsersByEmail(normalizedTeacherEmail);
 
-        const createdUser = await UserModel.create({
+        if (existingUsers.length > 0) {
+            return res.status(409).json({ message: 'An account with this email/username already exists.' });
+        }
+
+        const createdTeacher = await TeacherModel.create({
             firstName: firstName.trim(),
             lastName: lastName.trim(),
-            email: normalizedEmail,
+            email: normalizedTeacherEmail,
             passwordHash: hashPassword(password)
-        }) as {
-            _id: unknown;
-            firstName: string;
-            lastName: string;
-            email: string;
-        };
+        });
 
         return res.status(201).json({
-            message: 'Account created successfully.',
-            user: buildAuthUser(role, createdUser)
+            message: 'Teacher account created successfully.',
+            user: buildAuthUser('teacher', createdTeacher)
         });
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to create account.';
+        const message = error instanceof Error ? error.message : 'Unable to create teacher account.';
         return res.status(500).json({ message });
     }
 });

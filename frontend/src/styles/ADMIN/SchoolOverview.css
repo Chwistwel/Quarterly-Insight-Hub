@@ -449,6 +449,68 @@
   font-size: 0.92rem;
 }
 
+.admin-create-teacher-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+}
+
+.admin-create-teacher-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.admin-create-teacher-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.admin-create-teacher-form input {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0 0.6rem;
+  font-size: 0.9rem;
+}
+
+.admin-form-feedback {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.admin-form-feedback-success {
+  color: #198754;
+}
+
+.admin-form-feedback-error {
+  color: #c43d3d;
+}
+
+.admin-create-teacher-submit {
+  width: max-content;
+  min-width: 210px;
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: #263673;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.admin-create-teacher-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .admin-action-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -517,6 +579,12 @@
   margin: 0;
   color: var(--brand);
   font-size: 0.95rem;
+}
+
+@media (max-width: 900px) {
+  .admin-create-teacher-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .admin-report-item p {

@@ -65,6 +65,8 @@ function Auth() {
       });
 
       localStorage.setItem('userRole', response.user.role);
+      localStorage.setItem('userEmail', response.user.email);
+      localStorage.setItem('userProfile', JSON.stringify(response.user));
       navigate(getRouteForRole(response.user.role));
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Unable to continue. Please try again.');

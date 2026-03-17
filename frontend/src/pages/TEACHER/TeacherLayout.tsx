@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 
+type StoredUserProfile = {
+	firstName?: string;
+	lastName?: string;
+	role?: 'teacher' | 'administrator';
+	email?: string;
+};
+
 const DashboardIcon = () => (
 	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
 		<rect x="4" y="4" width="6" height="6" rx="1" />
@@ -44,9 +51,25 @@ type TeacherLayoutProps = {
 
 function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	const navigate = useNavigate();
+	const storedProfileText = localStorage.getItem('userProfile');
+	let storedProfile: StoredUserProfile | null = null;
+
+	if (storedProfileText) {
+		try {
+			storedProfile = JSON.parse(storedProfileText) as StoredUserProfile;
+		} catch {
+			storedProfile = null;
+		}
+	}
+
+	const fullName = [storedProfile?.firstName?.trim(), storedProfile?.lastName?.trim()]
+		.filter((value): value is string => Boolean(value))
+		.join(' ');
+	const displayName = fullName || 'Teacher';
 
 	const handleLogout = () => {
 		localStorage.removeItem('userRole');
+		localStorage.removeItem('userEmail');
 		localStorage.removeItem('userProfile');
 		navigate('/');
 	};
@@ -57,7 +80,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 				<div className="teacher-profile">
 					<div className="teacher-avatar">👤</div>
 					<div>
-						<h2>Ms. Sarah Johnson</h2>
+						<h2>{displayName}</h2>
 						<p>Math Teacher</p>
 					</div>
 				</div>
