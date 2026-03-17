@@ -81,15 +81,15 @@ function Auth() {
 
         <form className="auth-form" onSubmit={handleAuthSubmit}>
           <label>
-            Email
+            Email or Username
             <input
-              type="email"
+              type="text"
               name="email"
               required
               value={formState.email}
               onChange={handleInputChange}
-              placeholder="name@school.edu"
-              autoComplete="email"
+              placeholder="name@school.edu or admin"
+              autoComplete="username"
             />
           </label>
 

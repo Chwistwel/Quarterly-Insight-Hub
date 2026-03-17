@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { randomBytes, scryptSync } from 'crypto';
-import Administrator from './models/Administrator.js';
+import Administrator from './models/Administrator.ts';
 
 dotenv.config();
 
