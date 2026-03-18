@@ -6,6 +6,7 @@ import multer from 'multer';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import Teacher from './models/Teacher.js';
 import Administrator from './models/Administrator.js';
+import ClassSection from './models/ClassSection.js';
 
 // 1. Load environment variables from .env file
 dotenv.config();
@@ -47,6 +48,10 @@ type MemoryUser = {
     lastName: string;
     email: string;
     passwordHash: string;
+    subject?: string;
+    className?: string;
+    averageScore?: number;
+    passRate?: number;
 };
 
 type PersistedUser = {
@@ -56,6 +61,10 @@ type PersistedUser = {
     lastName: string;
     email: string;
     passwordHash?: string;
+    subject?: string;
+    className?: string;
+    averageScore?: number;
+    passRate?: number;
 };
 
 type CredentialUserRecord = {
@@ -64,6 +73,52 @@ type CredentialUserRecord = {
     lastName: string;
     email: string;
     passwordHash: string;
+    subject?: string;
+    className?: string;
+    averageScore?: number;
+    passRate?: number;
+};
+
+type TeacherListItem = {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    subject: string;
+    className: string;
+    averageScore: number;
+    passRate: number;
+};
+
+type MemoryClass = {
+    id: string;
+    className: string;
+    gradeLevel: string;
+    section: string;
+    subject: string;
+    teacherName: string;
+    studentCount: number;
+};
+
+type ClassRecord = {
+    _id?: unknown;
+    id?: string;
+    className: string;
+    gradeLevel: string;
+    section: string;
+    subject: string;
+    teacherName: string;
+    studentCount: number;
+};
+
+type ClassListItem = {
+    id: string;
+    className: string;
+    gradeLevel: string;
+    section: string;
+    subject: string;
+    teacherName: string;
+    studentCount: number;
 };
 
 type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
@@ -77,6 +132,7 @@ const memoryUsersByRole: Record<UserRole, Map<string, MemoryUser>> = {
     teacher: new Map<string, MemoryUser>(),
     administrator: new Map<string, MemoryUser>()
 };
+const memoryClasses = new Map<string, MemoryClass>();
 
 function isSupportedRole(role: unknown): role is UserRole {
     return role === 'teacher' || role === 'administrator';
@@ -130,6 +186,148 @@ function buildAuthUser(role: UserRole, user: PersistedUser) {
         lastName: user.lastName,
         email: user.email
     };
+}
+
+function buildTeacherListItem(user: PersistedUser): TeacherListItem {
+    return {
+        id: String(user._id ?? user.id ?? user.email),
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        subject: user.subject ?? 'Not assigned',
+        className: user.className ?? 'Not assigned',
+        averageScore: typeof user.averageScore === 'number' ? user.averageScore : 0,
+        passRate: typeof user.passRate === 'number' ? user.passRate : 0
+    };
+}
+
+function normalizeTeacherDisplayName(teacherName: string): string {
+    return teacherName.trim().toLowerCase();
+}
+
+function buildTeacherListWithClassAssignments(
+    teachers: PersistedUser[],
+    classRecords: Array<Pick<ClassRecord, 'gradeLevel' | 'section' | 'subject' | 'teacherName'>>
+): TeacherListItem[] {
+    const latestAssignmentByTeacher = new Map<string, { className: string; subject: string }>();
+
+    for (const classItem of classRecords) {
+        const normalizedTeacherName = normalizeTeacherDisplayName(classItem.teacherName);
+
+        if (!normalizedTeacherName) {
+            continue;
+        }
+
+        latestAssignmentByTeacher.set(normalizedTeacherName, {
+            className: buildClassLabel(classItem.gradeLevel, classItem.section),
+            subject: classItem.subject
+        });
+    }
+
+    return teachers.map((teacher) => {
+        const teacherItem = buildTeacherListItem(teacher);
+        const assignment = latestAssignmentByTeacher.get(
+            normalizeTeacherDisplayName(getTeacherDisplayNameFromUser(teacher))
+        );
+
+        return {
+            ...teacherItem,
+            subject: assignment?.subject ?? 'Not assigned',
+            className: assignment?.className ?? 'Not assigned'
+        };
+    });
+}
+
+function buildClassListItem(classItem: ClassRecord): ClassListItem {
+    return {
+        id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+        className: classItem.className,
+        gradeLevel: classItem.gradeLevel,
+        section: classItem.section,
+        subject: classItem.subject,
+        teacherName: classItem.teacherName,
+        studentCount: classItem.studentCount
+    };
+}
+
+function buildClassLabel(gradeLevel: string, section: string): string {
+    return `${gradeLevel} - ${section}`;
+}
+
+function parseTeacherDisplayName(teacherName: string): { firstName: string; lastName: string } {
+    const parts = teacherName.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts[0] ?? '';
+    const lastName = parts.slice(1).join(' ');
+    return { firstName, lastName };
+}
+
+function getTeacherDisplayNameFromUser(user: { firstName?: string; lastName?: string }): string {
+    return `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+}
+
+function getLatestMemoryClassForTeacher(teacherName: string): MemoryClass | undefined {
+    const normalizedTeacherName = teacherName.trim().toLowerCase();
+    const matchingClasses = Array.from(memoryClasses.values())
+        .filter((classItem) => classItem.teacherName.trim().toLowerCase() === normalizedTeacherName);
+
+    return matchingClasses[matchingClasses.length - 1];
+}
+
+function syncMemoryTeacherAssignmentByName(teacherName: string): void {
+    const normalizedTeacherName = teacherName.trim().toLowerCase();
+    const assignedTeacher = Array.from(getMemoryStoreByRole('teacher').values())
+        .find((teacher) => getTeacherDisplayNameFromUser(teacher).toLowerCase() === normalizedTeacherName);
+
+    if (!assignedTeacher) {
+        return;
+    }
+
+    const latestClass = getLatestMemoryClassForTeacher(teacherName);
+
+    if (!latestClass) {
+        assignedTeacher.className = '';
+        assignedTeacher.subject = '';
+        return;
+    }
+
+    assignedTeacher.className = buildClassLabel(latestClass.gradeLevel, latestClass.section);
+    assignedTeacher.subject = latestClass.subject;
+}
+
+async function syncDatabaseTeacherAssignmentByName(
+    TeacherModel: mongoose.Model<CredentialUserRecord>,
+    ClassSectionModel: mongoose.Model<ClassRecord>,
+    teacherName: string
+): Promise<void> {
+    const parsedTeacherName = parseTeacherDisplayName(teacherName);
+
+    if (!parsedTeacherName.firstName || !parsedTeacherName.lastName) {
+        return;
+    }
+
+    const teacher = await TeacherModel.findOne({
+        firstName: parsedTeacherName.firstName,
+        lastName: parsedTeacherName.lastName
+    });
+
+    if (!teacher) {
+        return;
+    }
+
+    const latestClass = await ClassSectionModel.findOne({ teacherName: teacherName.trim() })
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .lean();
+
+    if (!latestClass) {
+        teacher.className = '';
+        teacher.subject = '';
+        await teacher.save();
+        return;
+    }
+
+    teacher.className = buildClassLabel(latestClass.gradeLevel, latestClass.section);
+    teacher.subject = latestClass.subject;
+    await teacher.save();
 }
 
 function hashPassword(password: string): string {
@@ -519,12 +717,14 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 app.post('/api/admin/teachers', async (req: Request, res: Response) => {
     const requesterRole = req.header('x-user-role');
     const requesterEmail = req.header('x-user-email');
-    const { firstName, lastName, email, password, confirmPassword } = req.body as {
+    const { firstName, lastName, email, password, confirmPassword, subject, className } = req.body as {
         firstName?: string;
         lastName?: string;
         email?: string;
         password?: string;
         confirmPassword?: string;
+        subject?: string;
+        className?: string;
     };
 
     if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
@@ -545,6 +745,8 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
     const normalizedTeacherEmail = normalizeEmail(email);
+    const normalizedSubject = subject?.trim() || undefined;
+    const normalizedClassName = className?.trim() || undefined;
 
     if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
         const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
@@ -564,14 +766,19 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: normalizedTeacherEmail,
-            passwordHash: hashPassword(password)
+            passwordHash: hashPassword(password),
+            averageScore: 0,
+            passRate: 0,
+            ...(normalizedSubject ? { subject: normalizedSubject } : {}),
+            ...(normalizedClassName ? { className: normalizedClassName } : {})
         };
 
         getMemoryStoreByRole('teacher').set(normalizedTeacherEmail, fallbackTeacher);
 
         return res.status(201).json({
             message: 'Teacher account created successfully (temporary in-memory mode).',
-            user: buildAuthUser('teacher', fallbackTeacher)
+            user: buildAuthUser('teacher', fallbackTeacher),
+            teacher: buildTeacherListItem(fallbackTeacher)
         });
     }
 
@@ -600,12 +807,17 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: normalizedTeacherEmail,
-            passwordHash: hashPassword(password)
+            passwordHash: hashPassword(password),
+            averageScore: 0,
+            passRate: 0,
+            ...(normalizedSubject ? { subject: normalizedSubject } : {}),
+            ...(normalizedClassName ? { className: normalizedClassName } : {})
         });
 
         return res.status(201).json({
             message: 'Teacher account created successfully.',
-            user: buildAuthUser('teacher', createdTeacher)
+            user: buildAuthUser('teacher', createdTeacher),
+            teacher: buildTeacherListItem(createdTeacher)
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to create teacher account.';
@@ -765,6 +977,73 @@ app.get('/teacher/reports', async (_req: Request, res: Response) => {
     }
 });
 
+app.get('/teacher/my-classes', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can view assigned classes.' });
+    }
+
+    const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
+
+        if (!fallbackTeacher) {
+            return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
+        }
+
+        const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
+        const classes = Array.from(memoryClasses.values())
+            .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase())
+            .map((classItem) => ({
+                id: classItem.id,
+                grade: classItem.gradeLevel,
+                section: classItem.section,
+                subject: classItem.subject,
+                studentCount: classItem.studentCount,
+                teacher: classItem.teacherName,
+                gradeTag: classItem.gradeLevel
+            }));
+
+        return res.json({ classes });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+
+        if (!teacherAccount) {
+            return res.status(403).json({ message: 'Only valid teachers can view assigned classes.' });
+        }
+
+        const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+        const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).sort({ gradeLevel: 1, section: 1 }).lean();
+        const classes = classRecords.map((classItem) => ({
+            id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+            grade: classItem.gradeLevel,
+            section: classItem.section,
+            subject: classItem.subject,
+            studentCount: classItem.studentCount,
+            teacher: classItem.teacherName,
+            gradeTag: classItem.gradeLevel
+        }));
+
+        return res.json({ classes });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load assigned classes.';
+        return res.status(500).json({ message });
+    }
+});
+
 app.post('/api/item-analysis/compute', upload.single('file'), (req: Request, res: Response) => {
     const requestWithFile = req as RequestWithFile;
 
@@ -779,6 +1058,574 @@ app.post('/api/item-analysis/compute', upload.single('file'), (req: Request, res
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to process uploaded file.';
         return res.status(400).json({ message });
+    }
+});
+
+app.get('/api/admin/teachers', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can view teacher accounts.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const teachers = buildTeacherListWithClassAssignments(
+            Array.from(getMemoryStoreByRole('teacher').values()),
+            Array.from(memoryClasses.values())
+        )
+            .sort((first, second) => first.lastName.localeCompare(second.lastName));
+
+        return res.json({ teachers });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can view teacher accounts.' });
+        }
+
+        const teacherRecords = await TeacherModel.find({}).sort({ lastName: 1, firstName: 1 }).lean();
+        const classRecords = await ClassSectionModel.find({})
+            .sort({ updatedAt: 1, createdAt: 1 })
+            .lean();
+
+        const teachers = buildTeacherListWithClassAssignments(teacherRecords, classRecords);
+
+        return res.json({ teachers });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load teacher accounts.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { teacherId } = req.params as { teacherId?: string };
+    const { firstName, lastName, email, password, confirmPassword } = req.body as {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        password?: string;
+        confirmPassword?: string;
+    };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can update teacher accounts.' });
+    }
+
+    if (!teacherId?.trim()) {
+        return res.status(400).json({ message: 'Teacher id is required.' });
+    }
+
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim()) {
+        return res.status(400).json({ message: 'First name, last name, and email/username are required.' });
+    }
+
+    if (!password?.trim() || !confirmPassword?.trim()) {
+        return res.status(400).json({ message: 'Password and confirm password are required.' });
+    }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Passwords do not match.' });
+    }
+
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+    const normalizedTeacherEmail = normalizeEmail(email);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const teacherStore = getMemoryStoreByRole('teacher');
+        const existingEntry = Array.from(teacherStore.entries())
+            .find(([, teacher]) => teacher.id === teacherId);
+
+        if (!existingEntry) {
+            return res.status(404).json({ message: 'Teacher account not found.' });
+        }
+
+        const [existingKey, existingTeacher] = existingEntry;
+        const duplicateUser = teacherStore.get(normalizedTeacherEmail);
+
+        if (duplicateUser && duplicateUser.id !== existingTeacher.id) {
+            return res.status(409).json({ message: 'An account with this email/username already exists.' });
+        }
+
+        const updatedTeacher: MemoryUser = {
+            ...existingTeacher,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: normalizedTeacherEmail,
+            passwordHash: hashPassword(password)
+        };
+
+        if (existingKey !== normalizedTeacherEmail) {
+            teacherStore.delete(existingKey);
+        }
+
+        teacherStore.set(normalizedTeacherEmail, updatedTeacher);
+
+        return res.json({
+            message: 'Teacher account updated successfully (temporary in-memory mode).',
+            teacher: buildTeacherListItem(updatedTeacher)
+        });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can update teacher accounts.' });
+        }
+
+        const existingTeacher = await TeacherModel.findById(teacherId).lean();
+
+        if (!existingTeacher) {
+            return res.status(404).json({ message: 'Teacher account not found.' });
+        }
+
+        if (normalizeEmail(existingTeacher.email) !== normalizedTeacherEmail) {
+            const conflictingUsers = await findDatabaseUsersByEmail(normalizedTeacherEmail);
+            const hasConflict = conflictingUsers.some(({ user }) => String(user._id ?? user.id ?? '') !== String(existingTeacher._id ?? ''));
+
+            if (hasConflict) {
+                return res.status(409).json({ message: 'An account with this email/username already exists.' });
+            }
+        }
+
+        const updatedTeacher = await TeacherModel.findByIdAndUpdate(
+            teacherId,
+            {
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                email: normalizedTeacherEmail,
+                passwordHash: hashPassword(password)
+            },
+            { new: true }
+        ).lean();
+
+        if (!updatedTeacher) {
+            return res.status(404).json({ message: 'Teacher account not found.' });
+        }
+
+        return res.json({
+            message: 'Teacher account updated successfully.',
+            teacher: buildTeacherListItem(updatedTeacher)
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update teacher account.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.delete('/api/admin/teachers/:teacherId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { teacherId } = req.params as { teacherId?: string };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can delete teacher accounts.' });
+    }
+
+    if (!teacherId?.trim()) {
+        return res.status(400).json({ message: 'Teacher id is required.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const teacherStore = getMemoryStoreByRole('teacher');
+        const existingEntry = Array.from(teacherStore.entries())
+            .find(([, teacher]) => teacher.id === teacherId);
+
+        if (!existingEntry) {
+            return res.status(404).json({ message: 'Teacher account not found.' });
+        }
+
+        const [existingKey] = existingEntry;
+        teacherStore.delete(existingKey);
+
+        return res.json({ message: 'Teacher account deleted successfully (temporary in-memory mode).' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can delete teacher accounts.' });
+        }
+
+        const deletedTeacher = await TeacherModel.findByIdAndDelete(teacherId).lean();
+
+        if (!deletedTeacher) {
+            return res.status(404).json({ message: 'Teacher account not found.' });
+        }
+
+        return res.json({ message: 'Teacher account deleted successfully.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete teacher account.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.get('/api/admin/classes', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can view class records.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const classes = Array.from(memoryClasses.values())
+            .map((classItem) => buildClassListItem(classItem))
+            .sort((first, second) => first.gradeLevel.localeCompare(second.gradeLevel));
+
+        return res.json({ classes });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can view class records.' });
+        }
+
+        const classRecords = await ClassSectionModel.find({}).sort({ gradeLevel: 1, section: 1 }).lean();
+        const classes = classRecords.map((classItem) => buildClassListItem(classItem));
+        return res.json({ classes });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load class records.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.post('/api/admin/classes', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { className, gradeLevel, section, subject, teacherName, studentCount } = req.body as {
+        className?: string;
+        gradeLevel?: string;
+        section?: string;
+        subject?: string;
+        teacherName?: string;
+        studentCount?: number;
+    };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can create class records.' });
+    }
+
+    if (!className?.trim() || !gradeLevel?.trim() || !section?.trim() || !subject?.trim() || !teacherName?.trim() || typeof studentCount !== 'number' || !Number.isFinite(studentCount) || studentCount < 0) {
+        return res.status(400).json({ message: 'Class name, grade level, section, subject, teacher, and number of students are required.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const classId = randomBytes(12).toString('hex');
+        const newClass: MemoryClass = {
+            id: classId,
+            className: className.trim(),
+            gradeLevel: gradeLevel.trim(),
+            section: section.trim(),
+            subject: subject.trim(),
+            teacherName: teacherName.trim(),
+            studentCount: Math.floor(studentCount)
+        };
+
+        memoryClasses.set(classId, newClass);
+        syncMemoryTeacherAssignmentByName(newClass.teacherName);
+
+        return res.status(201).json({
+            message: 'Class record created successfully (temporary in-memory mode).',
+            classItem: buildClassListItem(newClass)
+        });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can create class records.' });
+        }
+
+        const createdClass = await ClassSectionModel.create({
+            className: className.trim(),
+            gradeLevel: gradeLevel.trim(),
+            section: section.trim(),
+            subject: subject.trim(),
+            teacherName: teacherName.trim(),
+            studentCount: Math.floor(studentCount)
+        });
+
+        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, createdClass.teacherName);
+
+        return res.status(201).json({
+            message: 'Class record created successfully.',
+            classItem: buildClassListItem(createdClass)
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create class record.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { classId } = req.params as { classId?: string };
+    const { className, gradeLevel, section, subject, teacherName, studentCount } = req.body as {
+        className?: string;
+        gradeLevel?: string;
+        section?: string;
+        subject?: string;
+        teacherName?: string;
+        studentCount?: number;
+    };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can update class records.' });
+    }
+
+    if (!classId?.trim()) {
+        return res.status(400).json({ message: 'Class id is required.' });
+    }
+
+    if (!className?.trim() || !gradeLevel?.trim() || !section?.trim() || !subject?.trim() || !teacherName?.trim() || typeof studentCount !== 'number' || !Number.isFinite(studentCount) || studentCount < 0) {
+        return res.status(400).json({ message: 'Class name, grade level, section, subject, teacher, and number of students are required.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const existingClass = memoryClasses.get(classId);
+
+        if (!existingClass) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        const updatedClass: MemoryClass = {
+            ...existingClass,
+            className: className.trim(),
+            gradeLevel: gradeLevel.trim(),
+            section: section.trim(),
+            subject: subject.trim(),
+            teacherName: teacherName.trim(),
+            studentCount: Math.floor(studentCount)
+        };
+
+        memoryClasses.set(classId, updatedClass);
+        syncMemoryTeacherAssignmentByName(existingClass.teacherName);
+        syncMemoryTeacherAssignmentByName(updatedClass.teacherName);
+
+        return res.json({
+            message: 'Class record updated successfully (temporary in-memory mode).',
+            classItem: buildClassListItem(updatedClass)
+        });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can update class records.' });
+        }
+
+        const existingClass = await ClassSectionModel.findById(classId).lean();
+
+        if (!existingClass) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        const updatedClass = await ClassSectionModel.findByIdAndUpdate(
+            classId,
+            {
+                className: className.trim(),
+                gradeLevel: gradeLevel.trim(),
+                section: section.trim(),
+                subject: subject.trim(),
+                teacherName: teacherName.trim(),
+                studentCount: Math.floor(studentCount)
+            },
+            { new: true }
+        ).lean();
+
+        if (!updatedClass) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, existingClass.teacherName);
+        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, updatedClass.teacherName);
+
+        return res.json({
+            message: 'Class record updated successfully.',
+            classItem: buildClassListItem(updatedClass)
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update class record.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.delete('/api/admin/classes/:classId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { classId } = req.params as { classId?: string };
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can delete class records.' });
+    }
+
+    if (!classId?.trim()) {
+        return res.status(400).json({ message: 'Class id is required.' });
+    }
+
+    const normalizedAdminEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
+
+        if (!fallbackAdmin) {
+            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
+        }
+
+        const existingClass = memoryClasses.get(classId);
+
+        if (!existingClass) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        memoryClasses.delete(classId);
+        syncMemoryTeacherAssignmentByName(existingClass.teacherName);
+
+        return res.json({ message: 'Class record deleted successfully (temporary in-memory mode).' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+
+        if (!adminAccount) {
+            return res.status(403).json({ message: 'Only valid administrators can delete class records.' });
+        }
+
+        const deletedClass = await ClassSectionModel.findByIdAndDelete(classId).lean();
+
+        if (!deletedClass) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, deletedClass.teacherName);
+
+        return res.json({ message: 'Class record deleted successfully.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete class record.';
+        return res.status(500).json({ message });
     }
 });
 

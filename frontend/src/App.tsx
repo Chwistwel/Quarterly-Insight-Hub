@@ -3,9 +3,10 @@ import { type ReactElement, useEffect, useState } from 'react';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
 import SchoolOverview from './pages/ADMIN/SchoolOverview';
+import { Teachers, AllClasses } from './pages/ADMIN';
+import AdminProfile from './pages/ADMIN/AdminProfile';
 import AdminItemAnalysis from './pages/ADMIN/ItemAnalysis';
 import TeacherPerformance from './pages/ADMIN/TeacherPerformance';
-import SchoolAnalytics from './pages/ADMIN/SchoolAnalytics';
 import AllReports from './pages/ADMIN/AllReports';
 import TeacherDashboard from './pages/TEACHER/Dashboard';
 import TeacherItemAnalysis from './pages/TEACHER/ItemAnalysis';
@@ -70,10 +71,12 @@ function App() {
         <Route path="/teacher/upload-results" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherUploadResults /></ProtectedRoute>} />
         <Route path="/teacher/my-reports" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMyReports /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['administrator']}><Navigate to="/admin/overview" replace /></ProtectedRoute>} />
+        <Route path="/admin/profile" element={<ProtectedRoute allowedRoles={['administrator']}><AdminProfile /></ProtectedRoute>} />
         <Route path="/admin/overview" element={<ProtectedRoute allowedRoles={['administrator']}><SchoolOverview /></ProtectedRoute>} />
+        <Route path="/admin/teachers" element={<ProtectedRoute allowedRoles={['administrator']}><Teachers /></ProtectedRoute>} />
+        <Route path="/admin/all-classes" element={<ProtectedRoute allowedRoles={['administrator']}><AllClasses /></ProtectedRoute>} />
         <Route path="/admin/item-analysis" element={<ProtectedRoute allowedRoles={['administrator']}><AdminItemAnalysis /></ProtectedRoute>} />
         <Route path="/admin/teacher-performance" element={<ProtectedRoute allowedRoles={['administrator']}><TeacherPerformance /></ProtectedRoute>} />
-        <Route path="/admin/school-analytics" element={<ProtectedRoute allowedRoles={['administrator']}><SchoolAnalytics /></ProtectedRoute>} />
         <Route path="/admin/all-reports" element={<ProtectedRoute allowedRoles={['administrator']}><AllReports /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

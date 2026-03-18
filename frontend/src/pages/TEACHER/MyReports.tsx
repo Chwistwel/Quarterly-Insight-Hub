@@ -33,6 +33,7 @@ function MyReports() {
 				<p>{data?.systemLabel ?? 'REPORT GENERATION CENTER'}</p>
 				<div className="teacher-heading-row">
 					<h2>{data?.title ?? 'My Reports'}</h2>
+					<span>{data?.viewLabel ?? 'Teacher View'}</span>
 				</div>
 			</section>
 
@@ -46,10 +47,13 @@ function MyReports() {
 			<div className="reports-action-grid">
 				{data?.actions?.length ? (
 					data.actions.map((action, index) => (
-						<article key={action.id} className={`teacher-card reports-action-card reports-action-card-${index + 1}`}>
+						<article
+							key={action.id}
+							className={`reports-action-card${index === 1 ? ' blue' : ''}${index === 2 ? ' green' : ''}`}
+						>
 							<h3>{action.title}</h3>
 							<p>{action.description}</p>
-							<button type="button" className="teacher-primary-btn reports-action-btn">{action.buttonLabel}</button>
+							<button type="button">{action.buttonLabel}</button>
 						</article>
 					))
 				) : (
@@ -64,14 +68,11 @@ function MyReports() {
 					<div className="reports-grid">
 						{data.reports.map((report) => (
 							<article key={report.id} className="reports-card">
-								<div className="reports-card-head">
-									<strong>{report.title}</strong>
-									<button type="button" className="teacher-secondary-btn">Download</button>
-								</div>
+								<strong>{report.title}</strong>
 								<p>{report.category}</p>
 								<div className="reports-card-meta">
 									<span>{report.updatedAt}</span>
-									<span>{report.size}</span>
+									<button type="button">Download</button>
 								</div>
 							</article>
 						))}

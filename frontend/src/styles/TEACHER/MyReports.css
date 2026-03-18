@@ -1,10 +1,13 @@
 @import './Dashboard.css';
 
 .teacher-page-subtitle {
-	margin: -0.15rem 0 0.3rem;
+	margin: 0;
 	color: var(--text-secondary);
-	font-weight: 600;
 	font-size: 0.92rem;
+}
+
+.teacher-heading-row {
+	margin-top: 0.35rem;
 }
 
 .reports-action-grid {
@@ -14,28 +17,51 @@
 }
 
 .reports-action-card {
-	padding: 0.85rem;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 0.9rem;
+	background: #f1f3fb;
+}
+
+.reports-action-card.blue {
+	background: #eaf2ff;
+}
+
+.reports-action-card.green {
+	background: #e9f7ef;
 }
 
 .reports-action-card h3 {
 	margin: 0;
+	font-size: 0.92rem;
 	color: var(--brand);
-	font-size: 0.95rem;
 }
 
 .reports-action-card p {
 	margin: 0.35rem 0 0.7rem;
 	color: var(--text-secondary);
-	font-size: 0.8rem;
+	font-size: 0.78rem;
 }
 
-.reports-action-btn {
-	height: 36px;
-	font-size: 0.82rem;
+.reports-action-card button {
+	width: 100%;
+	height: 32px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: #263673;
+	color: #ffffff;
+	font-weight: 700;
+	font-size: 0.78rem;
+	cursor: pointer;
+}
+
+.reports-action-card.blue button,
+.reports-action-card.green button {
+	background: var(--surface);
+	color: var(--brand);
 }
 
 .reports-grid {
-	margin-top: 0.8rem;
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.7rem;
@@ -43,41 +69,56 @@
 
 .reports-card {
 	border: 1px solid var(--border);
-	border-radius: 11px;
-	background: var(--surface-soft);
-	padding: 0.8rem;
+	border-radius: 10px;
+	background: var(--surface);
+	padding: 0.85rem;
 }
 
-.reports-card-head {
-	display: flex;
-	justify-content: space-between;
-	gap: 0.6rem;
-	align-items: center;
-}
-
-.reports-card-head strong {
+.reports-card strong {
+	margin: 0;
 	color: var(--brand);
-	font-size: 0.92rem;
+	font-size: 0.95rem;
 }
 
 .reports-card p {
-	margin: 0.45rem 0 0;
+	margin: 0.35rem 0 0.85rem;
 	color: var(--text-secondary);
-	font-size: 0.8rem;
+	font-size: 0.78rem;
 }
 
 .reports-card-meta {
-	margin-top: 0.6rem;
 	display: flex;
 	justify-content: space-between;
-	gap: 0.6rem;
+	align-items: center;
 	color: var(--text-secondary);
+	font-size: 0.76rem;
+}
+
+.reports-card-meta button {
+	height: 30px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--surface-soft);
+	color: var(--brand);
+	padding: 0 0.75rem;
+	font-weight: 700;
 	font-size: 0.74rem;
+	cursor: pointer;
+}
+
+.teacher-panel-copy {
+	margin: 0.3rem 0 0.55rem;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
 }
 
 @media (max-width: 1100px) {
 	.reports-action-grid,
 	.reports-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.teacher-page-subtitle {
+		font-size: 0.95rem;
 	}
 }

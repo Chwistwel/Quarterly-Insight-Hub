@@ -1,0 +1,98 @@
+.admin-profile-link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 11px;
+  transition: background-color 0.15s ease;
+}
+
+.admin-profile-link:hover {
+  background: var(--surface-soft);
+}
+
+.admin-profile-link.active {
+  background: var(--surface-soft);
+}
+
+.admin-profile-link .admin-profile {
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-profile-page-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 2fr;
+  gap: 0.8rem;
+}
+
+.admin-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.admin-profile-avatar-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #263673;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.admin-profile-card h2 {
+  margin: 0;
+  color: var(--brand);
+  font-size: 1.15rem;
+}
+
+.admin-profile-card p {
+  margin: 0.18rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.admin-profile-details h2,
+.admin-profile-notes h2 {
+  margin: 0;
+  color: var(--brand);
+  font-size: 1.05rem;
+}
+
+.admin-profile-detail-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.admin-profile-detail-list div {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 0.55rem 0.65rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-profile-detail-list span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.admin-profile-detail-list strong {
+  color: var(--brand);
+  font-size: 0.92rem;
+}
+
+.admin-profile-notes p {
+  margin: 0.45rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 1200px) {
+  .admin-profile-page-grid {
+    grid-template-columns: 1fr;
+  }
+}

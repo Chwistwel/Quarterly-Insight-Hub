@@ -1,7 +1,4 @@
-import { useState } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
 import AdminLayout from './AdminLayout';
-import { fetchJson } from '../../services/api';
 import '../../styles/ADMIN/SchoolOverview.css';
 
 const gradeBars = [
@@ -18,65 +15,7 @@ const subjectBars = [
 	{ label: 'Filipino', value: 80 }
 ];
 
-type TeacherAccountFormState = {
-	firstName: string;
-	lastName: string;
-	email: string;
-	password: string;
-	confirmPassword: string;
-};
-
-const initialTeacherAccountFormState: TeacherAccountFormState = {
-	firstName: '',
-	lastName: '',
-	email: '',
-	password: '',
-	confirmPassword: ''
-};
-
 function SchoolOverview() {
-	const [teacherFormState, setTeacherFormState] = useState<TeacherAccountFormState>(initialTeacherAccountFormState);
-	const [teacherFormMessage, setTeacherFormMessage] = useState('');
-	const [teacherFormError, setTeacherFormError] = useState('');
-	const [teacherFormSubmitting, setTeacherFormSubmitting] = useState(false);
-
-	const handleTeacherFormInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-		const { name, value } = event.target;
-		setTeacherFormState((previous) => ({
-			...previous,
-			[name]: value
-		}));
-	};
-
-	const handleTeacherAccountSubmit = async (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		setTeacherFormMessage('');
-		setTeacherFormError('');
-		setTeacherFormSubmitting(true);
-
-		try {
-			const role = localStorage.getItem('userRole') ?? '';
-			const email = localStorage.getItem('userEmail') ?? '';
-
-			const response = await fetchJson<{ message: string }>('/api/admin/teachers', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'x-user-role': role,
-					'x-user-email': email
-				},
-				body: JSON.stringify(teacherFormState)
-			});
-
-			setTeacherFormMessage(response.message);
-			setTeacherFormState(initialTeacherAccountFormState);
-		} catch (error) {
-			setTeacherFormError(error instanceof Error ? error.message : 'Unable to create teacher account.');
-		} finally {
-			setTeacherFormSubmitting(false);
-		}
-	};
-
 	return (
 		<AdminLayout
 			kicker="QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM"
@@ -85,10 +24,12 @@ function SchoolOverview() {
 			<section className="admin-filter-row">
 				<select defaultValue="All Grades">
 					<option>All Grades</option>
-					<option>Grade 7</option>
-					<option>Grade 8</option>
-					<option>Grade 9</option>
-					<option>Grade 10</option>
+					<option>Grade 1</option>
+					<option>Grade 2</option>
+					<option>Grade 3</option>
+					<option>Grade 4</option>
+					<option>Grade 5</option>
+					<option>Grade 6</option>
 				</select>
 				<select defaultValue="Q1">
 					<option>Q1</option>
@@ -96,83 +37,6 @@ function SchoolOverview() {
 					<option>Q3</option>
 					<option>Q4</option>
 				</select>
-			</section>
-
-			<section className="admin-panel">
-				<h2>Create Teacher Account</h2>
-				<p className="admin-subcopy">Only administrators can add teachers. Teachers can log in immediately after account creation.</p>
-				<form className="admin-create-teacher-form" onSubmit={handleTeacherAccountSubmit}>
-					<div className="admin-create-teacher-grid">
-						<label>
-							First Name
-							<input
-								type="text"
-								name="firstName"
-								required
-								value={teacherFormState.firstName}
-								onChange={handleTeacherFormInputChange}
-								placeholder="Juan"
-							/>
-						</label>
-						<label>
-							Last Name
-							<input
-								type="text"
-								name="lastName"
-								required
-								value={teacherFormState.lastName}
-								onChange={handleTeacherFormInputChange}
-								placeholder="Dela Cruz"
-							/>
-						</label>
-					</div>
-
-					<label>
-						Teacher Email or Username
-						<input
-							type="text"
-							name="email"
-							required
-							value={teacherFormState.email}
-							onChange={handleTeacherFormInputChange}
-							placeholder="teacher@school.edu or teacher01"
-						/>
-					</label>
-
-					<div className="admin-create-teacher-grid">
-						<label>
-							Password
-							<input
-								type="password"
-								name="password"
-								required
-								minLength={8}
-								value={teacherFormState.password}
-								onChange={handleTeacherFormInputChange}
-								placeholder="At least 8 characters"
-							/>
-						</label>
-						<label>
-							Confirm Password
-							<input
-								type="password"
-								name="confirmPassword"
-								required
-								minLength={8}
-								value={teacherFormState.confirmPassword}
-								onChange={handleTeacherFormInputChange}
-								placeholder="Re-enter password"
-							/>
-						</label>
-					</div>
-
-					{teacherFormMessage ? <p className="admin-form-feedback admin-form-feedback-success">{teacherFormMessage}</p> : null}
-					{teacherFormError ? <p className="admin-form-feedback admin-form-feedback-error">{teacherFormError}</p> : null}
-
-					<button type="submit" className="admin-create-teacher-submit" disabled={teacherFormSubmitting}>
-						{teacherFormSubmitting ? 'Creating account...' : 'Create Teacher Account'}
-					</button>
-				</form>
 			</section>
 
 			<section className="admin-kpis">

@@ -22,6 +22,30 @@ const teacherSchema = new mongoose.Schema(
         passwordHash: {
             type: String,
             required: true
+        },
+        subject: {
+            type: String,
+            required: false,
+            default: '',
+            trim: true
+        },
+        className: {
+            type: String,
+            required: false,
+            default: '',
+            trim: true
+        },
+        averageScore: {
+            type: Number,
+            default: 0,
+            min: 0,
+            max: 100
+        },
+        passRate: {
+            type: Number,
+            default: 0,
+            min: 0,
+            max: 100
         }
     },
     {

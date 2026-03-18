@@ -271,6 +271,15 @@ function hasItems<T>(values: T[] | undefined): boolean {
 	return Array.isArray(values) && values.length > 0;
 }
 
+function getTeacherAuthHeaders(): Record<string, string> {
+	const role = localStorage.getItem('userRole') ?? '';
+	const email = localStorage.getItem('userEmail') ?? '';
+	return {
+		'x-user-role': role,
+		'x-user-email': email
+	};
+}
+
 export async function getDashboardData(): Promise<DashboardResponse> {
 	if (USE_TEACHER_MOCK_DATA) {
 		return dashboardMockData;
@@ -336,7 +345,20 @@ export async function getReportsData(): Promise<ReportsResponse> {
 }
 
 export async function getMyClassesData(): Promise<TeacherClassSummary[]> {
-	return myClassesMockData;
+	try {
+		const payload = await fetchJson<{ classes: TeacherClassSummary[] }>('/teacher/my-classes', {
+			method: 'GET',
+			headers: getTeacherAuthHeaders()
+		});
+
+		if (!hasItems(payload.classes)) {
+			return [];
+		}
+
+		return payload.classes;
+	} catch {
+		return USE_TEACHER_MOCK_DATA ? myClassesMockData : [];
+	}
 }
 
 export async function getStudentManagementData(classId?: string): Promise<StudentManagementResponse> {
