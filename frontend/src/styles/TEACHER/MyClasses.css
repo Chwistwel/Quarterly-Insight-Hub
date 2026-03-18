@@ -74,8 +74,15 @@
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	background: var(--surface);
-	font-size: 0.95rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	cursor: pointer;
+}
+
+.my-class-delete-btn .ui-inline-icon {
+	width: 1rem;
+	height: 1rem;
 }
 
 @media (max-width: 1180px) {

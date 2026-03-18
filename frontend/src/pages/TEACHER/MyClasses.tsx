@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
 import { getMyClassesData, type TeacherClassSummary } from '../../services/teacherPortalApi';
+import { TrashIcon } from '../../components/icons';
 import '../../styles/TEACHER/MyClasses.css';
 
 function MyClasses() {
@@ -65,7 +66,7 @@ function MyClasses() {
 							<button type="button" className="my-class-view-btn" onClick={() => handleViewClass(item.id)}>
 								View
 							</button>
-							<button type="button" className="my-class-delete-btn" aria-label="Delete class">🗑</button>
+							<button type="button" className="my-class-delete-btn" aria-label="Delete class"><TrashIcon className="ui-inline-icon" /></button>
 						</div>
 					</article>
 				))}

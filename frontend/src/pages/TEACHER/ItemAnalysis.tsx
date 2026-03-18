@@ -10,6 +10,10 @@ function ItemAnalysis() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedView, setSelectedView] = useState('all');
+	const [selectedClass, setSelectedClass] = useState('');
+	const [selectedSubject, setSelectedSubject] = useState('');
+	const [appliedClass, setAppliedClass] = useState('');
+	const [appliedSubject, setAppliedSubject] = useState('');
 
 	const filteredRows = (data?.rows ?? []).filter((row) => {
 		if (selectedView === 'all') {
@@ -48,8 +52,22 @@ function ItemAnalysis() {
 			setError(null);
 
 			try {
-				const response = await getItemAnalysisData();
+				const response = await getItemAnalysisData(appliedClass, appliedSubject);
 				setData(response);
+				const nextClass = response.selectedClass ?? '';
+				const nextSubject = response.selectedSubject ?? '';
+				if (nextClass !== selectedClass) {
+					setSelectedClass(nextClass);
+				}
+				if (nextSubject !== selectedSubject) {
+					setSelectedSubject(nextSubject);
+				}
+				if (nextClass !== appliedClass) {
+					setAppliedClass(nextClass);
+				}
+				if (nextSubject !== appliedSubject) {
+					setAppliedSubject(nextSubject);
+				}
 			} catch (loadError) {
 				setData(null);
 				setError(loadError instanceof Error ? loadError.message : 'Unable to load item analysis.');
@@ -59,7 +77,12 @@ function ItemAnalysis() {
 		};
 
 		void load();
-	}, []);
+	}, [appliedClass, appliedSubject]);
+
+	const handleApplyFilters = () => {
+		setAppliedClass(selectedClass);
+		setAppliedSubject(selectedSubject);
+	};
 
 	return (
 		<TeacherLayout title={data?.title ?? 'My Item Analysis'}>
@@ -83,14 +106,22 @@ function ItemAnalysis() {
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
 
 			<section className="teacher-filter-row">
-				<select defaultValue={data?.grade ?? ''}>
+				<select value={selectedClass} onChange={(event) => {
+					setSelectedClass(event.target.value);
+					setSelectedSubject('');
+				}}>
 					<option value="">Select Class</option>
-					{data?.grade ? <option value={data.grade}>{`${data.grade}${data.section ? ` - ${data.section}` : ''}`}</option> : null}
+					{(data?.classOptions ?? []).map((classOption) => (
+						<option key={classOption} value={classOption}>{classOption}</option>
+					))}
 				</select>
-				<select defaultValue={data?.subject ?? ''}>
+				<select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)} disabled={!selectedClass}>
 					<option value="">Select Subject</option>
-					{data?.subject ? <option value={data.subject}>{data.subject}</option> : null}
+					{(data?.subjectOptions ?? []).map((subjectOption) => (
+						<option key={subjectOption} value={subjectOption}>{subjectOption}</option>
+					))}
 				</select>
+				<button type="button" className="teacher-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>Apply</button>
 			</section>
 
 			<div className="teacher-kpis teacher-kpis-3">

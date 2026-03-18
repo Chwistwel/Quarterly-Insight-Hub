@@ -151,8 +151,17 @@
   border: 0;
   background: transparent;
   color: var(--home-text-soft);
-  font-size: 1rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+
+.auth-password-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .auth-meta-row {

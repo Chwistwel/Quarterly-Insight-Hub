@@ -60,6 +60,11 @@
 	font-size: 0.9rem;
 }
 
+.layout-avatar-icon {
+	width: 1rem;
+	height: 1rem;
+}
+
 .teacher-profile h2 {
 	margin: 0;
 	color: var(--brand);
@@ -135,6 +140,14 @@
 	font-size: 1rem;
 	font-weight: 700;
 	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.layout-logout-icon {
+	width: 1rem;
+	height: 1rem;
 }
 
 .teacher-dash-heading p {
@@ -181,6 +194,24 @@
 	background: var(--surface);
 	color: var(--text-primary);
 	padding: 0 0.6rem;
+}
+
+.teacher-filter-apply-btn {
+	height: 38px;
+	min-width: 94px;
+	border: 1px solid #263673;
+	border-radius: 10px;
+	background: #263673;
+	color: #ffffff;
+	padding: 0 0.8rem;
+	font-size: 0.84rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.teacher-filter-apply-btn:disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
 }
 
 .teacher-kpis {

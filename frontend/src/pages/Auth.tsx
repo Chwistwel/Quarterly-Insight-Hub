@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchJson } from '../services/api';
+import { EyeIcon, EyeOffIcon } from '../components/icons';
 import '../styles/Auth.css';
 
 type UserRole = 'teacher' | 'administrator';
@@ -113,7 +114,7 @@ function Auth() {
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? '🙈' : '👁️'}
+                {showPassword ? <EyeOffIcon className="auth-password-icon" /> : <EyeIcon className="auth-password-icon" />}
               </button>
             </div>
           </label>

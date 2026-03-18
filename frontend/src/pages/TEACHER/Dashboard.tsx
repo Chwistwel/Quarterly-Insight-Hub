@@ -9,6 +9,8 @@ function Dashboard() {
 	const [error, setError] = useState<string | null>(null);
 	const [selectedGrade, setSelectedGrade] = useState('');
 	const [selectedQuarter, setSelectedQuarter] = useState('');
+	const [appliedGrade, setAppliedGrade] = useState('');
+	const [appliedQuarter, setAppliedQuarter] = useState('');
 
 	useEffect(() => {
 		const load = async () => {
@@ -16,10 +18,14 @@ function Dashboard() {
 			setError(null);
 
 			try {
-				const response = await getDashboardData();
+				const response = await getDashboardData(appliedGrade, appliedQuarter);
 				setData(response);
-				setSelectedGrade(response.filters?.grades?.[0] ?? '');
-				setSelectedQuarter(response.filters?.quarters?.[0] ?? '');
+				const nextGrade = response.selectedGrade ?? response.filters?.grades?.[0] ?? '';
+				const nextQuarter = response.selectedQuarter ?? response.filters?.quarters?.[0] ?? '';
+				setSelectedGrade(nextGrade);
+				setSelectedQuarter(nextQuarter);
+				setAppliedGrade(nextGrade);
+				setAppliedQuarter(nextQuarter);
 			} catch (loadError) {
 				setData(null);
 				setError(loadError instanceof Error ? loadError.message : 'Unable to load dashboard data.');
@@ -29,7 +35,12 @@ function Dashboard() {
 		};
 
 		void load();
-	}, []);
+	}, [appliedGrade, appliedQuarter]);
+
+	const handleApplyFilters = () => {
+		setAppliedGrade(selectedGrade);
+		setAppliedQuarter(selectedQuarter);
+	};
 
 	const peakTrend = useMemo(() => {
 		if (!data?.trend?.length) {
@@ -82,6 +93,7 @@ function Dashboard() {
 						<option key={quarter} value={quarter}>{quarter}</option>
 					))}
 				</select>
+				<button type="button" className="teacher-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>Apply</button>
 			</section>
 
 			{loading ? <p className="teacher-status">Loading dashboard...</p> : null}

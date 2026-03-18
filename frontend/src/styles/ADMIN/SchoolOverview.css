@@ -35,6 +35,11 @@
   font-size: 0.9rem;
 }
 
+.layout-avatar-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
 .admin-profile h2 {
   margin: 0;
   color: var(--brand);
@@ -106,6 +111,14 @@
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.layout-logout-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .admin-main {
@@ -162,6 +175,24 @@
   padding: 0 0.6rem;
 }
 
+.admin-filter-apply-btn {
+  height: 38px;
+  min-width: 94px;
+  border: 1px solid #263673;
+  border-radius: 10px;
+  background: #263673;
+  color: #ffffff;
+  padding: 0 0.8rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-filter-apply-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .admin-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -170,6 +201,10 @@
 
 .admin-kpis-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-kpis-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .admin-card,
@@ -238,7 +273,7 @@
 
 .admin-vbar-item {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.3rem;
   width: 100%;
 }
 
@@ -249,6 +284,7 @@
 }
 
 .admin-vbar-track {
+  position: relative;
   height: 180px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -256,6 +292,13 @@
   overflow: hidden;
   display: flex;
   align-items: flex-end;
+}
+
+.admin-vbar-value {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--brand);
+  font-weight: 700;
 }
 
 .admin-vbar-fill {
@@ -270,7 +313,7 @@
 
 .admin-hbar-row {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: 120px 1fr auto;
   align-items: center;
   gap: 0.6rem;
 }
@@ -290,6 +333,14 @@
 .admin-hbar-fill {
   height: 100%;
   background: #95a5dd;
+}
+
+.admin-hbar-value {
+  min-width: 46px;
+  text-align: right;
+  font-size: 0.82rem;
+  color: var(--brand);
+  font-weight: 700;
 }
 
 .admin-table-wrap {

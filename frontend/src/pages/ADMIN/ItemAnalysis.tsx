@@ -1,42 +1,134 @@
+import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from './AdminLayout';
+import { fetchJson } from '../../services/api';
 import '../../styles/ADMIN/SchoolOverview.css';
 
-const itemRows = [
-  { no: 1, difficulty: 0.75, discrimination: 0.68, interpretation: 'Good', status: 'good' },
-  { no: 2, difficulty: 0.82, discrimination: 0.51, interpretation: 'Fair', status: 'fair' },
-  { no: 3, difficulty: 0.68, discrimination: 0.72, interpretation: 'Good', status: 'good' },
-  { no: 4, difficulty: 0.48, discrimination: 0.81, interpretation: 'Excellent', status: 'excellent' },
-  { no: 5, difficulty: 0.32, discrimination: 0.42, interpretation: 'Poor', status: 'poor' },
-  { no: 6, difficulty: 0.75, discrimination: 0.65, interpretation: 'Good', status: 'good' }
-] as const;
+type AdminItemAnalysisRow = {
+  itemNo: number;
+  difficultyIndex: number;
+  discriminationIndex: number;
+  interpretation: string;
+  status: 'excellent' | 'good' | 'fair' | 'poor';
+};
+
+type AdminItemAnalysisResponse = {
+  title: string;
+  classOptions: string[];
+  classSubjectMap: Record<string, string[]>;
+  subjectOptions: string[];
+  selectedClass: string;
+  selectedSubject: string;
+  classAverage: string;
+  averageIndex: string;
+  totalStudents: number;
+  rows: AdminItemAnalysisRow[];
+};
 
 function ItemAnalysis() {
+  const [data, setData] = useState<AdminItemAnalysisResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [appliedClass, setAppliedClass] = useState<string>('');
+  const [appliedSubject, setAppliedSubject] = useState<string>('');
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const role = localStorage.getItem('userRole') ?? '';
+        const email = localStorage.getItem('userEmail') ?? '';
+        const params = new URLSearchParams();
+        if (appliedClass) {
+          params.set('class', appliedClass);
+        }
+        if (appliedSubject) {
+          params.set('subject', appliedSubject);
+        }
+
+        const query = params.toString();
+        const response = await fetchJson<AdminItemAnalysisResponse>(`/api/admin/item-analysis${query ? `?${query}` : ''}`, {
+          method: 'GET',
+          headers: {
+            'x-user-role': role,
+            'x-user-email': email
+          }
+        });
+
+        setData(response);
+        setSelectedClass(response.selectedClass ?? '');
+        setSelectedSubject(response.selectedSubject ?? '');
+        setAppliedClass(response.selectedClass ?? '');
+        setAppliedSubject(response.selectedSubject ?? '');
+      } catch (loadError) {
+        setData(null);
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load item analysis.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, [appliedClass, appliedSubject]);
+
+  const classOptions = data?.classOptions ?? [];
+
+  const availableSubjects = useMemo(() => {
+    if (!selectedClass) {
+      return [];
+    }
+
+    return data?.classSubjectMap?.[selectedClass] ?? [];
+  }, [data?.classSubjectMap, selectedClass]);
+
+  const filteredRows = useMemo(() => {
+    return [...(data?.rows ?? [])]
+      .sort((first, second) => second.discriminationIndex - first.discriminationIndex || first.itemNo - second.itemNo);
+  }, [data?.rows]);
+
+  const handleApply = () => {
+    setAppliedClass(selectedClass);
+    setAppliedSubject(selectedSubject);
+  };
+
   return (
-    <AdminLayout kicker="COMPREHENSIVE ITEM ANALYSIS" title="My Item Analysis - Grade 7">
+    <AdminLayout kicker="COMPREHENSIVE ITEM ANALYSIS" title={data?.title ?? 'My Item Analysis'}>
+      {loading ? <p className="admin-subcopy">Loading item analysis...</p> : null}
+      {error ? <p className="admin-subcopy" style={{ color: '#c43d3d' }}>{error}</p> : null}
+
       <section className="admin-filter-row">
-        <select defaultValue="Grade 7 - Section A">
-          <option>Grade 7 - Section A</option>
-          <option>Grade 8 - Section B</option>
+        <select value={selectedClass} onChange={(event) => {
+          setSelectedClass(event.target.value);
+          setSelectedSubject('');
+        }}>
+          {classOptions.map((classOption) => (
+            <option key={classOption} value={classOption}>{classOption}</option>
+          ))}
         </select>
-        <select defaultValue="Mathematics">
-          <option>Mathematics</option>
-          <option>Science</option>
-          <option>English</option>
+        <select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)} disabled={!selectedClass}>
+          <option value="">All Subjects</option>
+          {availableSubjects.map((subjectOption) => (
+            <option key={subjectOption} value={subjectOption}>{subjectOption}</option>
+          ))}
         </select>
+        <button type="button" className="admin-filter-apply-btn" onClick={handleApply} disabled={loading}>Apply</button>
       </section>
 
       <section className="admin-kpis admin-kpis-3">
         <article className="admin-card">
           <p>AVERAGE SCORE</p>
-          <strong>78.5%</strong>
+          <strong>{data?.classAverage ?? '0.0%'}</strong>
         </article>
         <article className="admin-card">
           <p>AVERAGE INDEX</p>
-          <strong>82%</strong>
+          <strong>{data?.averageIndex ?? '0.0%'}</strong>
         </article>
         <article className="admin-card">
           <p>TOTAL STUDENTS</p>
-          <strong>45</strong>
+          <strong>{data?.totalStudents ?? 0}</strong>
         </article>
       </section>
 
@@ -60,16 +152,21 @@ function ItemAnalysis() {
               </tr>
             </thead>
             <tbody>
-              {itemRows.map((row) => (
-                <tr key={row.no}>
-                  <td>{row.no}</td>
-                  <td>{row.difficulty.toFixed(2)}</td>
-                  <td>{row.discrimination.toFixed(2)}</td>
+              {filteredRows.map((row) => (
+                <tr key={row.itemNo}>
+                  <td>{row.itemNo}</td>
+                  <td>{row.difficultyIndex.toFixed(2)}</td>
+                  <td>{row.discriminationIndex.toFixed(2)}</td>
                   <td>
                     <span className={`admin-badge ${row.status}`}>{row.interpretation}</span>
                   </td>
                 </tr>
               ))}
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>No item analysis data found for the selected filters.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

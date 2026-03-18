@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { type ReactElement, useEffect, useState } from 'react';
+import { MoonIcon, SunIcon } from './components/icons';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
 import SchoolOverview from './pages/ADMIN/SchoolOverview';
@@ -87,7 +88,7 @@ function App() {
         onClick={() => setThemeMode((current) => (current === 'light' ? 'dark' : 'light'))}
         aria-label={`Switch to ${themeMode === 'light' ? 'dark' : 'light'} mode`}
       >
-        {themeMode === 'light' ? '🌙' : '☀️'}
+        {themeMode === 'light' ? <MoonIcon className="theme-toggle-icon" /> : <SunIcon className="theme-toggle-icon" />}
       </button>
     </BrowserRouter>
   );

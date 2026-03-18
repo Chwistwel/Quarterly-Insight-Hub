@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { LogOutIcon, UserIcon } from '../../components/icons';
 
 type StoredUserProfile = {
   firstName?: string;
@@ -97,7 +98,7 @@ function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
       <aside className="admin-sidebar">
         <NavLink to="/admin/profile" className={({ isActive }) => `admin-profile-link${isActive ? ' active' : ''}`}>
           <div className="admin-profile">
-            <div className="admin-avatar">👤</div>
+            <div className="admin-avatar"><UserIcon className="layout-avatar-icon" /></div>
             <div>
               <h2>{displayName}</h2>
               <p>{roleLabel}</p>
@@ -133,7 +134,8 @@ function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
         </nav>
 
         <button type="button" className="admin-logout" onClick={handleLogout}>
-          ↩ Log Out
+          <LogOutIcon className="layout-logout-icon" />
+          Log Out
         </button>
       </aside>
 

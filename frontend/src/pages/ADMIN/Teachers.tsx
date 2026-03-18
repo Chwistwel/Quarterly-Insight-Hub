@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import AdminLayout from './AdminLayout';
 import { fetchJson } from '../../services/api';
+import { CloseIcon, EditIcon, MailIcon, PlusIcon, TrashIcon, TrophyIcon, BookIcon } from '../../components/icons';
 import '../../styles/ADMIN/AdminManagement.css';
 
 type TeacherCard = {
@@ -281,7 +282,7 @@ function Teachers() {
         </article>
 
         <button type="button" className="admin-management-primary-button" onClick={handleToggleCreateTeacherForm}>
-          <span aria-hidden="true">＋</span>
+          <PlusIcon className="ui-inline-icon" />
           Add Teacher
         </button>
       </section>
@@ -291,7 +292,9 @@ function Teachers() {
           <section className="admin-management-form-panel admin-management-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-management-modal-head">
               <h2>Create Teacher Account</h2>
-              <button type="button" className="admin-management-modal-close" onClick={handleToggleCreateTeacherForm} aria-label="Close create teacher dialog">×</button>
+              <button type="button" className="admin-management-modal-close" onClick={handleToggleCreateTeacherForm} aria-label="Close create teacher dialog">
+                <CloseIcon className="ui-inline-icon" />
+              </button>
             </div>
 
             <p className="admin-subcopy">Only administrators can add teachers.</p>
@@ -381,7 +384,9 @@ function Teachers() {
           <section className="admin-management-form-panel admin-management-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-management-modal-head">
               <h2>Edit Teacher Account</h2>
-              <button type="button" className="admin-management-modal-close" onClick={handleCloseEditTeacherModal} aria-label="Close edit teacher dialog">×</button>
+              <button type="button" className="admin-management-modal-close" onClick={handleCloseEditTeacherModal} aria-label="Close edit teacher dialog">
+                <CloseIcon className="ui-inline-icon" />
+              </button>
             </div>
 
             <p className="admin-subcopy">Update teacher details and set a new password.</p>
@@ -467,12 +472,12 @@ function Teachers() {
             <div className="admin-management-card-top">
               <div>
                 <h2>{teacher.name}</h2>
-                <p className="admin-management-email">✉ {teacher.email}</p>
+                <p className="admin-management-email"><MailIcon className="ui-inline-icon" /> {teacher.email}</p>
               </div>
               <span className="admin-management-chip">{teacher.subject}</span>
             </div>
 
-            <p className="admin-management-meta">📖 Class: <strong>{teacher.className}</strong></p>
+            <p className="admin-management-meta"><BookIcon className="ui-inline-icon" /> Class: <strong>{teacher.className}</strong></p>
 
             <div className="admin-management-progress-row">
               <div>
@@ -494,11 +499,15 @@ function Teachers() {
               </div>
             </div>
 
-            {teacher.topPerformer ? <p className="admin-management-highlight">🏆 Top Performer</p> : null}
+            {teacher.topPerformer ? <p className="admin-management-highlight"><TrophyIcon className="ui-inline-icon" /> Top Performer</p> : null}
 
             <div className="admin-management-actions">
-              <button type="button" className="admin-management-secondary-button" onClick={() => handleOpenEditTeacherModal(teacher)}>✎ Edit</button>
-              <button type="button" className="admin-management-danger-button" onClick={() => handleTeacherDelete(teacher)} aria-label={`Delete ${teacher.name}`}>🗑</button>
+              <button type="button" className="admin-management-secondary-button" onClick={() => handleOpenEditTeacherModal(teacher)}>
+                <EditIcon className="ui-inline-icon" /> Edit
+              </button>
+              <button type="button" className="admin-management-danger-button" onClick={() => handleTeacherDelete(teacher)} aria-label={`Delete ${teacher.name}`}>
+                <TrashIcon className="ui-inline-icon" />
+              </button>
             </div>
           </article>
         ))}

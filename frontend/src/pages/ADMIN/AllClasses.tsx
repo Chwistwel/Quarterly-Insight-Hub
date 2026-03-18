@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import AdminLayout from './AdminLayout';
 import { fetchJson } from '../../services/api';
+import { BookIcon, CloseIcon, EditIcon, PlusIcon, TagIcon, TrashIcon, UsersIcon } from '../../components/icons';
 import '../../styles/ADMIN/AdminManagement.css';
 
 type ClassCard = {
@@ -238,7 +239,7 @@ function AllClasses() {
     <AdminLayout kicker="MANAGE CLASS SECTIONS" title="Class Management">
       <section className="admin-management-actions-row">
         <button type="button" className="admin-management-primary-button admin-management-primary-button-right" onClick={() => setShowCreateClassModal(true)}>
-          <span aria-hidden="true">＋</span>
+          <PlusIcon className="ui-inline-icon" />
           Add Class
         </button>
       </section>
@@ -251,7 +252,9 @@ function AllClasses() {
           <section className="admin-management-form-panel admin-management-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-management-modal-head">
               <h2>Create Class Record</h2>
-              <button type="button" className="admin-management-modal-close" onClick={closeCreateClassModal} aria-label="Close add class dialog">×</button>
+              <button type="button" className="admin-management-modal-close" onClick={closeCreateClassModal} aria-label="Close add class dialog">
+                <CloseIcon className="ui-inline-icon" />
+              </button>
             </div>
             <p className="admin-subcopy">Create a class section and assign a teacher.</p>
 
@@ -288,10 +291,6 @@ function AllClasses() {
                     {teacherOptions.map((teacherName) => <option key={teacherName} value={teacherName}>{teacherName}</option>)}
                   </select>
                 </label>
-                <label>
-                  Number of Students
-                  <input type="number" min={0} name="studentCount" required value={createClassFormState.studentCount} onChange={handleCreateClassInputChange} />
-                </label>
               </div>
 
               <button type="submit" className="admin-create-teacher-submit" disabled={classFormSubmitting || teacherOptions.length === 0}>
@@ -307,7 +306,9 @@ function AllClasses() {
           <section className="admin-management-form-panel admin-management-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-management-modal-head">
               <h2>Edit Class Record</h2>
-              <button type="button" className="admin-management-modal-close" onClick={closeEditClassModal} aria-label="Close edit class dialog">×</button>
+              <button type="button" className="admin-management-modal-close" onClick={closeEditClassModal} aria-label="Close edit class dialog">
+                <CloseIcon className="ui-inline-icon" />
+              </button>
             </div>
             <p className="admin-subcopy">Update class details and teacher assignment.</p>
 
@@ -336,19 +337,13 @@ function AllClasses() {
                 </label>
               </div>
 
-              <div className="admin-create-teacher-grid">
-                <label>
-                  Teacher
-                  <select name="teacherName" required value={editClassFormState.teacherName} onChange={handleEditClassInputChange}>
-                    {teacherOptions.length === 0 ? <option value="">No teachers available</option> : null}
-                    {teacherOptions.map((teacherName) => <option key={teacherName} value={teacherName}>{teacherName}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Number of Students
-                  <input type="number" min={0} name="studentCount" required value={editClassFormState.studentCount} onChange={handleEditClassInputChange} />
-                </label>
-              </div>
+              <label>
+                Teacher
+                <select name="teacherName" required value={editClassFormState.teacherName} onChange={handleEditClassInputChange}>
+                  {teacherOptions.length === 0 ? <option value="">No teachers available</option> : null}
+                  {teacherOptions.map((teacherName) => <option key={teacherName} value={teacherName}>{teacherName}</option>)}
+                </select>
+              </label>
 
               <button type="submit" className="admin-create-teacher-submit" disabled={classFormSubmitting || teacherOptions.length === 0}>
                 {classFormSubmitting ? 'Saving changes...' : 'Save Changes'}
@@ -373,13 +368,17 @@ function AllClasses() {
               <span className="admin-management-chip">{classItem.gradeLevel}</span>
             </div>
 
-            <p className="admin-management-meta">🏷 {classItem.section}</p>
-            <p className="admin-management-meta">👥 {classItem.studentCount} Students</p>
-            <p className="admin-management-meta">📖 {classItem.teacherName}</p>
+            <p className="admin-management-meta"><TagIcon className="ui-inline-icon" /> {classItem.section}</p>
+            <p className="admin-management-meta"><UsersIcon className="ui-inline-icon" /> {classItem.studentCount} Students</p>
+            <p className="admin-management-meta"><BookIcon className="ui-inline-icon" /> {classItem.teacherName}</p>
 
             <div className="admin-management-actions">
-              <button type="button" className="admin-management-secondary-button" onClick={() => handleOpenEditClassModal(classItem)}>✎ Edit</button>
-              <button type="button" className="admin-management-danger-button" onClick={() => handleDeleteClass(classItem)} aria-label={`Delete ${classItem.className}`}>🗑</button>
+              <button type="button" className="admin-management-secondary-button" onClick={() => handleOpenEditClassModal(classItem)}>
+                <EditIcon className="ui-inline-icon" /> Edit
+              </button>
+              <button type="button" className="admin-management-danger-button" onClick={() => handleDeleteClass(classItem)} aria-label={`Delete ${classItem.className}`}>
+                <TrashIcon className="ui-inline-icon" />
+              </button>
             </div>
           </article>
         ))}

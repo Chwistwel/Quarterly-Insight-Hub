@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { LogOutIcon, UserIcon } from '../../components/icons';
 
 type StoredUserProfile = {
 	firstName?: string;
@@ -78,7 +79,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 		<div className="teacher-workspace">
 			<aside className="teacher-sidebar">
 				<div className="teacher-profile">
-					<div className="teacher-avatar">👤</div>
+					<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
 					<div>
 						<h2>{displayName}</h2>
 						<p>Math Teacher</p>
@@ -105,7 +106,8 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 				</nav>
 
 				<button type="button" className="teacher-logout" onClick={handleLogout}>
-					↩ Log Out
+					<LogOutIcon className="layout-logout-icon" />
+					Log Out
 				</button>
 			</aside>
 
