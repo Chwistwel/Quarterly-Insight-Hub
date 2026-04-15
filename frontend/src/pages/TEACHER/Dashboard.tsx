@@ -72,11 +72,11 @@ function Dashboard() {
 	}, [data]);
 
 	return (
-		<TeacherLayout title={data?.title ?? 'My Dashboard'}>
+		<TeacherLayout title={data?.title ?? 'Dashboard'}>
 			<section className="teacher-dash-heading">
 				<p>{data?.systemLabel ?? 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM'}</p>
 				<div>
-					<h2>{data?.title ?? 'My Dashboard'}</h2>
+					<h2>{data?.title ?? 'Dashboard'}</h2>
 				</div>
 			</section>
 
@@ -115,7 +115,7 @@ function Dashboard() {
 
 			<section className="teacher-panel">
 				<div className="teacher-panel-head">
-					<h2>My Class Performance Trend</h2>
+					<h2>Class Performance Trend</h2>
 					{peakTrend ? <span>Peak: {peakTrend}</span> : null}
 				</div>
 				{data?.trend?.length && trendPoints ? (

@@ -55,6 +55,11 @@
 	cursor: pointer;
 }
 
+.reports-action-card button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
 .reports-action-card.blue button,
 .reports-action-card.green button {
 	background: var(--surface);
@@ -106,10 +111,219 @@
 	cursor: pointer;
 }
 
+.reports-card-meta button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.print-only {
+	display: none;
+}
+
 .teacher-panel-copy {
 	margin: 0.3rem 0 0.55rem;
 	font-size: 0.8rem;
 	color: var(--text-secondary);
+}
+
+.report-builder-panel {
+	display: grid;
+	gap: 0.6rem;
+}
+
+.printable-report-sheet {
+	display: grid;
+	gap: 0.75rem;
+	background: #ffffff;
+	border: 1px solid #c2c9dc;
+	border-radius: 0;
+	color: #1b1f2d;
+}
+
+.print-report-header {
+	display: grid;
+	grid-template-columns: 84px 1fr 84px;
+	align-items: center;
+	gap: 0.65rem;
+	border-bottom: 1px solid #7f879e;
+	padding-bottom: 0.45rem;
+}
+
+.print-report-logo {
+	width: 74px;
+	height: 74px;
+	border: 2px solid #2c3a6f;
+	border-radius: 999px;
+	display: grid;
+	place-items: center;
+	font-size: 0.7rem;
+	font-weight: 800;
+	color: #1d2d62;
+	background: radial-gradient(circle at 30% 20%, #f5f8ff 0%, #dde7ff 45%, #c9d7ff 100%);
+}
+
+.print-report-header-copy {
+	text-align: center;
+}
+
+.print-report-header-copy p,
+.print-report-header-copy strong {
+	margin: 0;
+	font-size: 0.83rem;
+	line-height: 1.28;
+	color: #111525;
+}
+
+.print-report-header-copy h3 {
+	margin: 0.22rem 0 0.14rem;
+	font-size: 0.95rem;
+	color: #101933;
+}
+
+.print-report-summary-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	border: 1px solid #7f879e;
+}
+
+.print-report-summary-grid > div {
+	padding: 0.42rem 0.5rem;
+	border-right: 1px solid #7f879e;
+}
+
+.print-report-summary-grid > div:last-child {
+	border-right: 0;
+}
+
+.print-report-summary-grid p {
+	margin: 0;
+	font-size: 0.74rem;
+	color: #374165;
+}
+
+.print-report-summary-grid strong {
+	font-size: 0.95rem;
+	color: #0f1732;
+}
+
+.print-report-main-table {
+	max-height: 420px;
+}
+
+.print-report-table {
+	min-width: 1080px;
+	border-collapse: collapse;
+}
+
+.print-report-table th,
+.print-report-table td {
+	border: 1px solid #6e7590;
+	font-size: 0.72rem;
+	padding: 0.18rem 0.3rem;
+	line-height: 1.2;
+	color: #12162a;
+}
+
+.print-report-table th {
+	background: #eef2ff;
+	font-weight: 800;
+	text-transform: uppercase;
+	font-size: 0.68rem;
+}
+
+.print-report-result-summary {
+	border: 1px solid #7f879e;
+	padding: 0.45rem 0.6rem;
+}
+
+.print-report-result-summary h4 {
+	margin: 0 0 0.35rem;
+	font-size: 0.84rem;
+	color: #12204a;
+}
+
+.print-report-result-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.2rem 0.8rem;
+}
+
+.print-report-result-grid p {
+	margin: 0;
+	font-size: 0.74rem;
+	display: flex;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.print-report-result-grid strong {
+	color: #7f5f00;
+}
+
+.print-report-split {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 0.7rem;
+}
+
+.print-report-split h4 {
+	margin: 0 0 0.35rem;
+	font-size: 0.82rem;
+	color: #12204a;
+	text-transform: uppercase;
+}
+
+.print-report-table.compact {
+	min-width: 920px;
+}
+
+.print-report-split .teacher-table-wrap:first-child .print-report-table.compact tbody tr {
+	background: #fff864;
+}
+
+.print-report-split .teacher-table-wrap:last-child .print-report-table.compact tbody tr {
+	background: #edc8e8;
+}
+
+.print-report-footer-grid {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	border: 1px solid #7f879e;
+}
+
+.print-report-footer-grid > div {
+	border-right: 1px solid #7f879e;
+	padding: 0.35rem 0.4rem;
+}
+
+.print-report-footer-grid > div:last-child {
+	border-right: 0;
+}
+
+.print-report-footer-grid p {
+	margin: 0;
+	font-size: 0.7rem;
+	color: #374165;
+	text-transform: uppercase;
+}
+
+.print-report-footer-grid strong {
+	font-size: 0.9rem;
+	color: #0f1732;
+}
+
+@media (max-width: 1100px) {
+	.print-report-summary-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.print-report-summary-grid > div:nth-child(2n) {
+		border-right: 0;
+	}
+
+	.print-report-footer-grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
 }
 
 @media (max-width: 1100px) {
@@ -120,5 +334,35 @@
 
 	.teacher-page-subtitle {
 		font-size: 0.95rem;
+	}
+}
+
+@media print {
+	.no-print,
+	.teacher-dash-heading,
+	.teacher-page-subtitle,
+	.reports-action-grid,
+	section.teacher-panel:not(.printable-report-sheet) {
+		display: none !important;
+	}
+
+	body {
+		background: #ffffff !important;
+	}
+
+	.teacher-main,
+	.teacher-content,
+	.teacher-shell {
+		padding: 0 !important;
+		margin: 0 !important;
+	}
+
+	.printable-report-sheet {
+		display: grid !important;
+		border: 0;
+		box-shadow: none;
+		padding: 0;
+		margin: 0;
+		width: 100%;
 	}
 }

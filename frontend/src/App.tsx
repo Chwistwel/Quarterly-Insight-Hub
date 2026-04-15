@@ -15,6 +15,7 @@ import TeacherUploadResults from './pages/TEACHER/UploadResults';
 import TeacherMyReports from './pages/TEACHER/MyReports';
 import TeacherMyClasses from './pages/TEACHER/MyClasses';
 import TeacherStudentManagement from './pages/TEACHER/StudentManagement';
+import TeacherTOSBuilder from './pages/TEACHER/TOSBuilder';
 
 type ThemeMode = 'light' | 'dark';
 type UserRole = 'teacher' | 'administrator';
@@ -67,6 +68,7 @@ function App() {
         <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><Navigate to="/teacher/dashboard" replace /></ProtectedRoute>} />
         <Route path="/teacher/dashboard" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />
         <Route path="/teacher/item-analysis" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherItemAnalysis /></ProtectedRoute>} />
+        <Route path="/teacher/tos-builder" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherTOSBuilder /></ProtectedRoute>} />
         <Route path="/teacher/my-classes" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMyClasses /></ProtectedRoute>} />
         <Route path="/teacher/student-management" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherStudentManagement /></ProtectedRoute>} />
         <Route path="/teacher/upload-results" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherUploadResults /></ProtectedRoute>} />

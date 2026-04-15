@@ -32,6 +32,7 @@ function ItemAnalysis() {
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [appliedClass, setAppliedClass] = useState<string>('');
   const [appliedSubject, setAppliedSubject] = useState<string>('');
+  const [selectedView, setSelectedView] = useState<'all' | 'excellent' | 'good' | 'needs'>('all');
 
   useEffect(() => {
     const load = async () => {
@@ -85,9 +86,23 @@ function ItemAnalysis() {
   }, [data?.classSubjectMap, selectedClass]);
 
   const filteredRows = useMemo(() => {
-    return [...(data?.rows ?? [])]
-      .sort((first, second) => second.discriminationIndex - first.discriminationIndex || first.itemNo - second.itemNo);
-  }, [data?.rows]);
+    const rows = [...(data?.rows ?? [])]
+      .sort((first, second) => first.itemNo - second.itemNo);
+
+    if (selectedView === 'all') {
+      return rows;
+    }
+
+    if (selectedView === 'excellent') {
+      return rows.filter((row) => row.status === 'excellent');
+    }
+
+    if (selectedView === 'good') {
+      return rows.filter((row) => row.status === 'good');
+    }
+
+    return rows.filter((row) => row.status === 'fair' || row.status === 'poor');
+  }, [data?.rows, selectedView]);
 
   const handleApply = () => {
     setAppliedClass(selectedClass);
@@ -95,7 +110,7 @@ function ItemAnalysis() {
   };
 
   return (
-    <AdminLayout kicker="COMPREHENSIVE ITEM ANALYSIS" title={data?.title ?? 'My Item Analysis'}>
+    <AdminLayout kicker="COMPREHENSIVE ITEM ANALYSIS" title={data?.title ?? 'Item Analysis'}>
       {loading ? <p className="admin-subcopy">Loading item analysis...</p> : null}
       {error ? <p className="admin-subcopy" style={{ color: '#c43d3d' }}>{error}</p> : null}
 
@@ -133,10 +148,10 @@ function ItemAnalysis() {
       </section>
 
       <div className="admin-tabs">
-        <button type="button" className="active">All Items</button>
-        <button type="button">Excellent</button>
-        <button type="button">Good</button>
-        <button type="button">Needs Improvement</button>
+        <button type="button" className={selectedView === 'all' ? 'active' : ''} onClick={() => setSelectedView('all')}>All Items</button>
+        <button type="button" className={selectedView === 'excellent' ? 'active' : ''} onClick={() => setSelectedView('excellent')}>Excellent</button>
+        <button type="button" className={selectedView === 'good' ? 'active' : ''} onClick={() => setSelectedView('good')}>Good</button>
+        <button type="button" className={selectedView === 'needs' ? 'active' : ''} onClick={() => setSelectedView('needs')}>Needs Improvement</button>
       </div>
 
       <section className="admin-panel">

@@ -41,7 +41,7 @@ function Home() {
                 <small>34 of 43 students</small>
               </article>
               <article>
-                <span>My Students</span>
+                <span>Students</span>
                 <strong>43</strong>
                 <small>Grade 7 - Section A</small>
               </article>

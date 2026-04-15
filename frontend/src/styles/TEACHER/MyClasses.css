@@ -80,6 +80,11 @@
 	cursor: pointer;
 }
 
+.my-class-delete-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
 .my-class-delete-btn .ui-inline-icon {
 	width: 1rem;
 	height: 1rem;

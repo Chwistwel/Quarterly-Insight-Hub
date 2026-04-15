@@ -1,4 +1,4 @@
-import { fetchJson } from './api';
+import { fetchJson, getApiUrl } from './api';
 
 export type TeacherKpi = {
 	label: string;
@@ -50,6 +50,7 @@ export type ItemAnalysisResponse = {
 	grade?: string;
 	section?: string;
 	subject?: string;
+	selectedQuarter?: string;
 	classOptions?: string[];
 	subjectOptions?: string[];
 	selectedClass?: string;
@@ -58,6 +59,40 @@ export type ItemAnalysisResponse = {
 	averageIndex?: string | number;
 	totalStudents?: string | number;
 	totalItems?: number;
+	studentIdentityLinks?: Array<{
+		uploadedStudentName: string;
+		rank: number;
+		totalScore: number;
+		matchedStudentId?: string | null;
+		matchedFirstName?: string | null;
+		matchedLastName?: string | null;
+		matchType?: string;
+	}>;
+	studentResults?: Array<{
+		studentId?: string;
+		studentName: string;
+		totalScore: number;
+		rank: number;
+	}>;
+	studentItemResults?: Array<{
+		studentId?: string;
+		studentName: string;
+		totalScore: number;
+		rank: number;
+		itemResults: Array<{
+			itemNo: number;
+			item: string;
+			score: number;
+			interpretation: string;
+		}>;
+	}>;
+	classStudents?: Array<{
+		id: string;
+		name: string;
+		firstName: string;
+		lastName: string;
+		studentNo?: string;
+	}>;
 	rows: ItemAnalysisRow[];
 };
 
@@ -121,6 +156,7 @@ export type StudentRecord = {
 	q3Score: number;
 	q4Score: number;
 	average: string;
+	ranking: number;
 	classId: string;
 	subject: string;
 };
@@ -149,6 +185,13 @@ export type AddStudentPayload = {
 	middleName: string;
 	lastName: string;
 	gender: string;
+};
+
+export type UploadClassListResult = {
+	message: string;
+	addedCount: number;
+	skippedCount: number;
+	processedCount: number;
 };
 
 function getTeacherAuthHeaders(): Record<string, string> {
@@ -211,6 +254,49 @@ export async function getItemAnalysisData(selectedClass?: string, selectedSubjec
 	}
 }
 
+export async function submitTeacherItemAnalysis(payload: {
+	classValue: string;
+	subject: string;
+	quarter: string;
+	file: File;
+}): Promise<void> {
+	const formData = new FormData();
+	formData.append('file', payload.file);
+	formData.append('class', payload.classValue);
+	formData.append('subject', payload.subject);
+	formData.append('quarter', payload.quarter);
+
+	const response = await fetch(getApiUrl('/api/item-analysis/compute'), {
+		method: 'POST',
+		body: formData,
+		headers: getTeacherAuthHeaders()
+	});
+
+	if (!response.ok) {
+		const responseText = await response.text();
+		let errorMessage = `Upload failed (${response.status})`;
+
+		if (responseText.trim()) {
+			try {
+				const errorData = JSON.parse(responseText) as { message?: string };
+				errorMessage = errorData.message ?? errorMessage;
+			} catch {
+				errorMessage = responseText;
+			}
+		}
+
+		throw new Error(errorMessage);
+	}
+}
+
+export async function deleteTeacherItemAnalysis(classValue: string, subject: string): Promise<void> {
+	const params = new URLSearchParams({ class: classValue, subject });
+	await fetchJson<{ message: string }>(`/teacher/item-analysis?${params.toString()}`, {
+		method: 'DELETE',
+		headers: getTeacherAuthHeaders()
+	});
+}
+
 export async function getUploadMetaData(): Promise<UploadMetaResponse> {
 	try {
 		return await fetchJson<UploadMetaResponse>('/teacher/upload-meta', {
@@ -258,6 +344,13 @@ export async function getMyClassesData(): Promise<TeacherClassSummary[]> {
 	}
 }
 
+export async function deleteTeacherClass(classId: string): Promise<void> {
+	await fetchJson<{ message: string }>(`/teacher/my-classes/${encodeURIComponent(classId)}`, {
+		method: 'DELETE',
+		headers: getTeacherAuthHeaders()
+	});
+}
+
 export async function getStudentManagementData(classId?: string): Promise<StudentManagementResponse> {
 	const query = classId ? `?classId=${encodeURIComponent(classId)}` : '';
 	try {
@@ -295,4 +388,41 @@ export async function updateStudentRecord(studentId: string, payload: StudentUpd
 		},
 		body: JSON.stringify(payload)
 	});
+}
+
+export async function deleteStudentRecord(studentId: string): Promise<void> {
+	await fetchJson<{ message: string }>(`/teacher/students/${encodeURIComponent(studentId)}`, {
+		method: 'DELETE',
+		headers: getTeacherAuthHeaders()
+	});
+}
+
+export async function uploadStudentClassList(classId: string, file: File): Promise<UploadClassListResult> {
+	const formData = new FormData();
+	formData.append('file', file);
+	formData.append('classId', classId);
+
+	const response = await fetch(getApiUrl('/teacher/students/upload-class-list'), {
+		method: 'POST',
+		body: formData,
+		headers: getTeacherAuthHeaders()
+	});
+
+	if (!response.ok) {
+		const responseText = await response.text();
+		let errorMessage = `Class list upload failed (${response.status})`;
+
+		if (responseText.trim()) {
+			try {
+				const errorData = JSON.parse(responseText) as { message?: string };
+				errorMessage = errorData.message ?? errorMessage;
+			} catch {
+				errorMessage = responseText;
+			}
+		}
+
+		throw new Error(errorMessage);
+	}
+
+	return response.json() as Promise<UploadClassListResult>;
 }

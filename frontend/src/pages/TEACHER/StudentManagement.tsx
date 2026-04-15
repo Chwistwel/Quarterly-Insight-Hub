@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
-import { addStudentToClass, getMyClassesData, getStudentManagementData, updateStudentRecord, type StudentManagementResponse, type StudentRecord, type TeacherClassSummary } from '../../services/teacherPortalApi';
-import { CloseIcon, EditIcon } from '../../components/icons';
+import {
+	addStudentToClass,
+	deleteStudentRecord,
+	getMyClassesData,
+	getStudentManagementData,
+	uploadStudentClassList,
+	updateStudentRecord,
+	type StudentManagementResponse,
+	type StudentRecord,
+	type TeacherClassSummary
+} from '../../services/teacherPortalApi';
+import { CloseIcon, EditIcon, TrashIcon } from '../../components/icons';
 import '../../styles/TEACHER/StudentManagement.css';
 
 function StudentManagement() {
@@ -15,14 +25,20 @@ function StudentManagement() {
 	const [actionMessage, setActionMessage] = useState<string | null>(null);
 	const [addingStudent, setAddingStudent] = useState(false);
 	const [updatingStudent, setUpdatingStudent] = useState(false);
+	const [deletingStudent, setDeletingStudent] = useState(false);
+	const [uploadingClassList, setUploadingClassList] = useState(false);
 	const [showAddModal, setShowAddModal] = useState(false);
 	const [showEditModal, setShowEditModal] = useState(false);
+	const [showUploadModal, setShowUploadModal] = useState(false);
 	const [editingStudentId, setEditingStudentId] = useState('');
 	const [addFirstName, setAddFirstName] = useState('');
 	const [addMiddleName, setAddMiddleName] = useState('');
 	const [addLastName, setAddLastName] = useState('');
 	const [addGender, setAddGender] = useState('');
 	const [addClassId, setAddClassId] = useState('');
+	const [uploadClassId, setUploadClassId] = useState('');
+	const [uploadFile, setUploadFile] = useState<File | null>(null);
+	const [uploadFileName, setUploadFileName] = useState('');
 	const [editFirstName, setEditFirstName] = useState('');
 	const [editMiddleInitial, setEditMiddleInitial] = useState('');
 	const [editLastName, setEditLastName] = useState('');
@@ -82,6 +98,20 @@ function StudentManagement() {
 		}
 	};
 
+	const openUploadModal = () => {
+		setActionMessage(null);
+		setUploadClassId(activeClass?.id ?? classOptions[0]?.id ?? '');
+		setUploadFile(null);
+		setUploadFileName('');
+		setShowUploadModal(true);
+	};
+
+	const closeUploadModal = () => {
+		if (!uploadingClassList) {
+			setShowUploadModal(false);
+		}
+	};
+
 	const getNameParts = (student: StudentRecord): { firstName: string; middleInitial: string; lastName: string } => {
 		if (student.firstName || student.lastName) {
 			return {
@@ -100,9 +130,9 @@ function StudentManagement() {
 			return { firstName: tokens[0], middleInitial: '', lastName: '' };
 		}
 
-		const firstName = tokens[0] ?? '';
+		const firstName = tokens.slice(0, -1).join(' ');
 		const lastName = tokens[tokens.length - 1] ?? '';
-		const middleInitial = tokens.length > 2 ? (tokens[1]?.charAt(0).toUpperCase() ?? '') : '';
+		const middleInitial = '';
 
 		return { firstName, middleInitial, lastName };
 	};
@@ -123,8 +153,34 @@ function StudentManagement() {
 	};
 
 	const closeEditModal = () => {
-		if (!updatingStudent) {
+		if (!updatingStudent && !deletingStudent) {
 			setShowEditModal(false);
+		}
+	};
+
+	const handleDeleteStudent = async () => {
+		setActionMessage(null);
+
+		if (!editingStudentId) {
+			setActionMessage('No student selected for deletion.');
+			return;
+		}
+
+		const confirmed = window.confirm('Delete this student record? This action cannot be undone.');
+		if (!confirmed) {
+			return;
+		}
+
+		try {
+			setDeletingStudent(true);
+			await deleteStudentRecord(editingStudentId);
+			setShowEditModal(false);
+			setActionMessage('Student deleted successfully.');
+			await loadData();
+		} catch (deleteError) {
+			setActionMessage(deleteError instanceof Error ? deleteError.message : 'Unable to delete student.');
+		} finally {
+			setDeletingStudent(false);
 		}
 	};
 
@@ -227,7 +283,38 @@ function StudentManagement() {
 		}
 	};
 
-	const sortedStudents = useMemo(() => {
+	const handleUploadClassList = async (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		setActionMessage(null);
+
+		const matchedClassId = activeClass?.id ?? uploadClassId;
+		if (!matchedClassId) {
+			setActionMessage('Select a class for class-list upload.');
+			return;
+		}
+
+		if (!uploadFile) {
+			setActionMessage('Please choose a CSV or Excel class list file.');
+			return;
+		}
+
+		try {
+			setUploadingClassList(true);
+			const result = await uploadStudentClassList(matchedClassId, uploadFile);
+			setActionMessage(`${result.message} Added: ${result.addedCount}, Skipped: ${result.skippedCount}.`);
+			setShowUploadModal(false);
+			setUploadFile(null);
+			setUploadFileName('');
+			await loadData();
+			await loadClassOptions();
+		} catch (uploadError) {
+			setActionMessage(uploadError instanceof Error ? uploadError.message : 'Unable to upload class list.');
+		} finally {
+			setUploadingClassList(false);
+		}
+	};
+
+	const rankedStudents = useMemo(() => {
 		const students = [...(data?.students ?? [])];
 
 		const extractSortableName = (student: StudentRecord): { lastName: string; firstName: string; middleInitial: string; fullName: string } => {
@@ -240,7 +327,7 @@ function StudentManagement() {
 			};
 		};
 
-		return students.sort((first, second) => {
+		const byName = students.sort((first, second) => {
 			const firstName = extractSortableName(first);
 			const secondName = extractSortableName(second);
 
@@ -248,6 +335,17 @@ function StudentManagement() {
 				|| firstName.firstName.localeCompare(secondName.firstName)
 				|| firstName.middleInitial.localeCompare(secondName.middleInitial)
 				|| firstName.fullName.localeCompare(secondName.fullName);
+		});
+
+		return byName.map((student, index) => {
+			const parts = getNameParts(student);
+			return {
+				...student,
+				studentNumberDisplay: String(index + 1).padStart(2, '0'),
+				firstNameDisplay: parts.firstName || student.firstName || '-',
+				lastNameDisplay: parts.lastName || student.lastName || '-',
+				ranking: Number.isFinite(student.ranking) ? Number(student.ranking) : 0
+			};
 		});
 	}, [data?.students]);
 
@@ -261,10 +359,61 @@ function StudentManagement() {
 			</section>
 
 			<div className="student-toolbar">
+				<button type="button" className="teacher-secondary-btn student-upload-btn" onClick={openUploadModal}>
+					Upload Class List
+				</button>
 				<button type="button" className="teacher-primary-btn student-add-btn" onClick={openAddModal}>
 					+ Add Student
 				</button>
 			</div>
+
+			{showUploadModal ? (
+				<div className="teacher-modal-backdrop" onClick={closeUploadModal}>
+					<section className="teacher-modal" onClick={(event) => event.stopPropagation()}>
+						<div className="teacher-modal-head">
+							<h3>Upload Class List</h3>
+							<button type="button" className="teacher-modal-close" onClick={closeUploadModal} aria-label="Close upload form"><CloseIcon className="ui-inline-icon" /></button>
+						</div>
+
+						<form className="teacher-modal-form" onSubmit={handleUploadClassList}>
+							{!activeClass ? (
+								<label>
+									Class
+									<select value={uploadClassId} onChange={(event) => setUploadClassId(event.target.value)} required>
+										{classOptions.length === 0 ? <option value="">No classes available</option> : null}
+										{classOptions.map((classOption) => (
+											<option key={classOption.id} value={classOption.id}>{`${classOption.grade} - ${classOption.section} (${classOption.subject})`}</option>
+										))}
+									</select>
+								</label>
+							) : (
+								<p className="student-class-label">{`Class: ${activeClass.grade} - ${activeClass.section} (${activeClass.subject})`}</p>
+							)}
+
+							<label>
+								Class List File
+								<input
+									type="file"
+									accept=".csv,.xlsx,.xls"
+									onChange={(event) => {
+										const file = event.target.files?.[0] ?? null;
+										setUploadFile(file);
+										setUploadFileName(file?.name ?? '');
+									}}
+									required
+								/>
+							</label>
+
+							{uploadFileName ? <p className="student-upload-file-name">Selected: {uploadFileName}</p> : null}
+							<p className="student-upload-hint">Required columns: Firstname, Lastname. Optional: Gender, Student ID.</p>
+
+							<button type="submit" className="teacher-primary-btn" disabled={uploadingClassList || (!activeClass && classOptions.length === 0)}>
+								{uploadingClassList ? 'Uploading...' : 'Upload and Auto Add Students'}
+							</button>
+						</form>
+					</section>
+				</div>
+			) : null}
 
 			{showAddModal ? (
 				<div className="teacher-modal-backdrop" onClick={closeAddModal}>
@@ -367,29 +516,21 @@ function StudentManagement() {
 								<input type="text" value={editGender} onChange={(event) => setEditGender(event.target.value)} placeholder="Male/Female" />
 							</label>
 
-							<label>
-								Q1 Grade
-								<input type="text" value={editQ1} onChange={(event) => setEditQ1(event.target.value)} />
-							</label>
+							<div className="student-modal-actions">
+								<button
+									type="button"
+									className="student-delete-btn"
+									onClick={handleDeleteStudent}
+									disabled={updatingStudent || deletingStudent}
+								>
+									<TrashIcon className="ui-inline-icon" />
+									{deletingStudent ? 'Deleting...' : 'Delete Student'}
+								</button>
 
-							<label>
-								Q2 Grade
-								<input type="text" value={editQ2} onChange={(event) => setEditQ2(event.target.value)} />
-							</label>
-
-							<label>
-								Q3 Grade
-								<input type="text" value={editQ3} onChange={(event) => setEditQ3(event.target.value)} />
-							</label>
-
-							<label>
-								Q4 Grade
-								<input type="text" value={editQ4} onChange={(event) => setEditQ4(event.target.value)} />
-							</label>
-
-							<button type="submit" className="teacher-primary-btn" disabled={updatingStudent}>
-								{updatingStudent ? 'Saving...' : 'Save Changes'}
-							</button>
+								<button type="submit" className="teacher-primary-btn" disabled={updatingStudent || deletingStudent}>
+									{updatingStudent ? 'Saving...' : 'Save Changes'}
+								</button>
+							</div>
 						</form>
 					</section>
 				</div>
@@ -403,29 +544,27 @@ function StudentManagement() {
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
 
 			<section className="teacher-panel student-table-panel">
-				<h2>{`All Students (${sortedStudents.length})`}</h2>
+				<h2>{`All Students (${rankedStudents.length})`}</h2>
 				<div className="teacher-table-wrap">
 					<table className="teacher-table student-table">
 						<thead>
 							<tr>
-								<th>Student Name</th>
-								<th>Q1</th>
-								<th>Q2</th>
-								<th>Q3</th>
-								<th>Q4</th>
-								<th>Average</th>
+								<th>Student No.</th>
+								<th>Last Name</th>
+								<th>First Name</th>
+								<th>Gender</th>
+								<th>Ranking</th>
 								<th>Actions</th>
 							</tr>
 						</thead>
 						<tbody>
-							{sortedStudents.map((student) => (
+							{rankedStudents.map((student) => (
 								<tr key={student.id}>
-									<td>{student.name}</td>
-									<td>{student.q1Score}</td>
-									<td>{student.q2Score}</td>
-									<td>{student.q3Score}</td>
-									<td>{student.q4Score}</td>
-									<td className="student-average-cell">{student.average}</td>
+									<td>{student.studentNumberDisplay}</td>
+									<td>{student.lastNameDisplay}</td>
+									<td>{student.firstNameDisplay}</td>
+									<td>{student.gender || '-'}</td>
+									<td className="student-average-cell">{student.ranking}</td>
 									<td>
 										<div className="student-actions">
 											<button type="button" aria-label="Edit student" onClick={() => openEditModal(student)}><EditIcon className="ui-inline-icon" /></button>

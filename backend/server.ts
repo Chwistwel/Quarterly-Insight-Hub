@@ -518,42 +518,6 @@ function variance(values: number[]): number {
     return average(squaredDiffs);
 }
 
-function pearsonCorrelation(first: number[], second: number[]): number {
-    if (first.length !== second.length || first.length === 0) {
-        return 0;
-    }
-
-    const firstMean = average(first);
-    const secondMean = average(second);
-
-    let numerator = 0;
-    let firstDenominator = 0;
-    let secondDenominator = 0;
-
-    for (let index = 0; index < first.length; index += 1) {
-        const firstValue = first[index];
-        const secondValue = second[index];
-
-        if (firstValue === undefined || secondValue === undefined) {
-            continue;
-        }
-
-        const firstDiff = firstValue - firstMean;
-        const secondDiff = secondValue - secondMean;
-        numerator += firstDiff * secondDiff;
-        firstDenominator += firstDiff ** 2;
-        secondDenominator += secondDiff ** 2;
-    }
-
-    const denominator = Math.sqrt(firstDenominator * secondDenominator);
-
-    if (denominator === 0) {
-        return 0;
-    }
-
-    return numerator / denominator;
-}
-
 function interpretationFromDiscrimination(discrimination: number): string {
     if (discrimination >= 0.4) {
         return 'Excellent';
@@ -588,12 +552,34 @@ function computeItemAnalysis(csvText: string) {
     }
 
     const headers = parseCsvLine(headerRow).map((header) => header.trim());
-    const lowerHeaders = headers.map((header) => header.toLowerCase());
+    const normalizedHeaders = headers.map((header) => header.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+    const findHeaderIndex = (candidates: string[]): number => {
+        for (let index = 0; index < normalizedHeaders.length; index += 1) {
+            const normalizedHeader = normalizedHeaders[index] ?? '';
+            if (candidates.includes(normalizedHeader)) {
+                return index;
+            }
+        }
+
+        return -1;
+    };
+
+    const studentIdIndex = findHeaderIndex(['studentid', 'learnerid', 'id', 'lrn']);
+    const studentNameIndex = findHeaderIndex([
+        'studentname',
+        'learnername',
+        'learnernameoptional',
+        'studentnameoptional',
+        'student',
+        'name'
+    ]);
 
     const commonNonItemColumns = new Set([
         'student',
-        'student_id',
         'studentid',
+        'learner',
+        'learnername',
         'id',
         'name',
         'section',
@@ -601,19 +587,32 @@ function computeItemAnalysis(csvText: string) {
         'class',
         'subject',
         'quarter',
+        'rank',
+        'ranking',
         'total',
-        'total_score',
-        'score_total'
+        'totalscore',
+        'scoretotal',
+        'answerkey',
+        'key'
     ]);
 
-    const likelyItemIndexes = headers
+    const strictItemIndexes = headers
         .map((header, index) => ({ header, index }))
         .filter(({ header, index }) => {
-            const lowerHeader = lowerHeaders[index] ?? '';
-            const looksLikeItem = /^q\d+$/i.test(header) || /^item\s*\d+$/i.test(header) || /^item_?\d+$/i.test(lowerHeader);
-            return looksLikeItem || !commonNonItemColumns.has(lowerHeader);
+            const normalizedHeader = normalizedHeaders[index] ?? '';
+            return /^q\d+$/i.test(header)
+                || /^item\s*\d+$/i.test(header)
+                || /^item\d+$/i.test(normalizedHeader)
+                || /^q\d+$/i.test(normalizedHeader)
+                || /^\d+$/.test(normalizedHeader);
         })
         .map(({ index }) => index);
+
+    const likelyItemIndexes = strictItemIndexes.length
+        ? strictItemIndexes
+        : headers
+            .map((_, index) => index)
+            .filter((index) => !commonNonItemColumns.has(normalizedHeaders[index] ?? ''));
 
     const rawRowValues = rows.slice(1).map((row) => parseCsvLine(row));
 
@@ -629,12 +628,27 @@ function computeItemAnalysis(csvText: string) {
         throw new Error('No numeric item columns were detected. Expected columns like Q1,Q2,Q3 or Item1,Item2.');
     }
 
-    const normalizedRows: number[][] = rawRowValues.map((rowValues) =>
-        numericColumnIndexes.map((index) => {
-            const parsed = Number(rowValues[index] ?? Number.NaN);
-            return Number.isFinite(parsed) ? parsed : 0;
+    const parsedRows = rawRowValues
+        .map((rowValues) => {
+            const values = numericColumnIndexes.map((index) => Number(rowValues[index] ?? Number.NaN));
+            const hasNumericValue = values.some((value) => Number.isFinite(value));
+
+            if (!hasNumericValue) {
+                return null;
+            }
+
+            return {
+                rowValues,
+                values: values.map((value) => (Number.isFinite(value) ? value : 0))
+            };
         })
-    );
+        .filter((row): row is { rowValues: string[]; values: number[] } => Boolean(row));
+
+    const normalizedRows: number[][] = parsedRows.map((row) => row.values);
+
+    if (normalizedRows.length === 0) {
+        throw new Error('No valid response rows were detected from item columns.');
+    }
 
     const columnMaxima = numericColumnIndexes.map((_, columnIndex) => {
         const values = normalizedRows.map((row) => row[columnIndex] ?? 0);
@@ -651,13 +665,81 @@ function computeItemAnalysis(csvText: string) {
 
     const totals = scaledRows.map((row) => row.reduce((runningTotal, value) => runningTotal + value, 0));
 
+    const studentResults = parsedRows.map(({ rowValues }, rowIndex) => {
+        const studentId = studentIdIndex >= 0 ? String(rowValues[studentIdIndex] ?? '').trim() : '';
+        const studentName = studentNameIndex >= 0 ? String(rowValues[studentNameIndex] ?? '').trim() : '';
+        const totalScore = Number(totals[rowIndex] ?? 0);
+
+        return {
+            studentId,
+            studentName,
+            totalScore
+        };
+    });
+
+    const rankedStudentResults = studentResults
+        .map((entry, index) => ({ ...entry, index }))
+        .sort((first, second) => {
+            return second.totalScore - first.totalScore
+                || first.studentName.localeCompare(second.studentName)
+                || first.index - second.index;
+        })
+        .map((entry, index) => ({
+            studentId: entry.studentId,
+            studentName: entry.studentName,
+            totalScore: Number(entry.totalScore.toFixed(4)),
+            rank: index + 1
+        }));
+
+    const rankedStudentItemResults = studentResults
+        .map((entry, index) => {
+            const itemResults = scaledRows[index]?.map((value, itemIndex) => {
+                const rawHeader = String(headers[numericColumnIndexes[itemIndex]] ?? `${itemIndex + 1}`).trim();
+                const itemLabel = /^\d+$/.test(rawHeader) ? `Item ${rawHeader}` : rawHeader;
+
+                return {
+                    itemNo: itemIndex + 1,
+                    item: itemLabel,
+                    score: Number((value ?? 0).toFixed(2)),
+                    interpretation: (value ?? 0) >= 0.99 ? 'Correct' : ((value ?? 0) <= 0 ? 'Incorrect' : 'Partially Correct')
+                };
+            }) ?? [];
+
+            return {
+                ...entry,
+                itemResults,
+                index
+            };
+        })
+        .sort((first, second) => {
+            return second.totalScore - first.totalScore
+                || first.studentName.localeCompare(second.studentName)
+                || first.index - second.index;
+        })
+        .map((entry, index) => ({
+            studentId: entry.studentId,
+            studentName: entry.studentName,
+            totalScore: Number(entry.totalScore.toFixed(4)),
+            rank: index + 1,
+            itemResults: entry.itemResults
+        }));
+    const rowCount = scaledRows.length;
+    const groupSize = Math.max(1, Math.floor(rowCount * 0.27));
+    const rankedRowIndexes = totals
+        .map((total, rowIndex) => ({ total, rowIndex }))
+        .sort((first, second) => second.total - first.total)
+        .map((entry) => entry.rowIndex);
+    const upperGroupIndexes = rankedRowIndexes.slice(0, groupSize);
+    const lowerGroupIndexes = rankedRowIndexes.slice(-groupSize);
+
     const computedItems: ComputedItem[] = numericColumnIndexes.map((index, columnIndex) => {
         const headerValue = headers[index] ?? `Q${columnIndex + 1}`;
         const itemName = /^q\d+$/i.test(headerValue) ? headerValue.toUpperCase() : `Q${columnIndex + 1}`;
         const itemValues = scaledRows.map((row) => row[columnIndex] ?? 0);
-        const totalWithoutItem = scaledRows.map((row, rowIndex) => (totals[rowIndex] ?? 0) - (row[columnIndex] ?? 0));
         const difficulty = average(itemValues);
-        const discrimination = pearsonCorrelation(itemValues, totalWithoutItem);
+        const upperValues = upperGroupIndexes.map((rowIndex) => itemValues[rowIndex] ?? 0);
+        const lowerValues = lowerGroupIndexes.map((rowIndex) => itemValues[rowIndex] ?? 0);
+        const discrimination = average(upperValues) - average(lowerValues);
 
         return {
             item: itemName,
@@ -689,6 +771,8 @@ function computeItemAnalysis(csvText: string) {
             avgDiscrimination: Number(averageDiscrimination.toFixed(2)),
             reliability: Number(Math.max(-1, Math.min(1, reliability)).toFixed(2))
         },
+        studentResults: rankedStudentResults,
+        studentItemResults: rankedStudentItemResults,
         items: computedItems.map((item) => ({
             ...item,
             difficulty: Number(item.difficulty.toFixed(2)),
@@ -1214,7 +1298,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 description: selectedQuarter || 'All quarters'
             },
             {
-                label: 'My Students',
+                label: 'Students',
                 value: selectedClassStudentCount,
                 description: selectedGrade || 'All assigned classes'
             },
@@ -1226,7 +1310,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
         ];
 
         return res.json({
-            title: 'My Dashboard',
+            title: 'Dashboard',
             systemLabel: 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM',
             filters: {
                 grades,
@@ -1299,6 +1383,51 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
             const selectedAnalysis = uploadsForClass
                 .find((upload) => String(upload.subject ?? '').trim() === selectedSubject);
 
+            // Fetch all students in the selected class/subject
+            let classStudents: Array<{
+                id: string;
+                name: string;
+                firstName: string;
+                lastName: string;
+                studentNo?: string;
+            }> = [];
+
+            try {
+                const StudentModel = Student as mongoose.Model<PersistedUser>;
+                const classParts = selectedClass.split('-').map((token) => token.trim()).filter(Boolean);
+                const gradeLevel = classParts[0] ?? '';
+                const section = classParts.slice(1).join(' - ');
+
+                const studentQuery: Record<string, unknown> = {
+                    teacherEmail: normalizedTeacherEmail
+                };
+
+                if (gradeLevel) {
+                    studentQuery.grade = gradeLevel;
+                }
+                if (section) {
+                    studentQuery.section = section;
+                }
+                if (selectedSubject) {
+                    studentQuery.subject = selectedSubject;
+                }
+
+                const studentsInClass = await StudentModel.find(studentQuery)
+                    .select('_id name firstName lastName')
+                    .lean();
+
+                classStudents = studentsInClass.map((student: any) => ({
+                    id: student._id?.toString() ?? '',
+                    name: student.name ?? '',
+                    firstName: student.firstName ?? '',
+                    lastName: student.lastName ?? '',
+                    studentNo: undefined
+                }));
+            } catch {
+                // If fetching students fails, continue without them
+                classStudents = [];
+            }
+
             if (selectedAnalysis) {
                 const items = (selectedAnalysis.items as Array<{ item: string; difficulty: number; discrimination: number; interpretation: string }>) ?? [];
                 const rows = items.map((item, index) => ({
@@ -1316,13 +1445,18 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
                     title: `${selectedSubject} - ${selectedClass}`,
                     grade: selectedClass,
                     subject: selectedSubject,
+                    selectedQuarter: String(selectedAnalysis.quarter ?? '').trim(),
                     classAverage: `${avgDifficulty * 100}%`,
                     averageIndex: `${avgDiscrimination * 100}%`,
-                    totalStudents: items.length,
+                    totalStudents: Array.isArray(selectedAnalysis.studentIdentityLinks) ? selectedAnalysis.studentIdentityLinks.length : items.length,
                     classOptions,
                     subjectOptions,
                     selectedClass,
                     selectedSubject,
+                    studentIdentityLinks: Array.isArray(selectedAnalysis.studentIdentityLinks) ? selectedAnalysis.studentIdentityLinks : [],
+                    studentResults: Array.isArray(selectedAnalysis.studentResults) ? selectedAnalysis.studentResults : [],
+                    studentItemResults: Array.isArray(selectedAnalysis.studentItemResults) ? selectedAnalysis.studentItemResults : [],
+                    classStudents,
                     rows
                 });
             }
@@ -1332,6 +1466,10 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
                 subjectOptions,
                 selectedClass,
                 selectedSubject,
+                studentIdentityLinks: [],
+                studentResults: [],
+                studentItemResults: [],
+                classStudents,
                 rows: []
             });
         }
@@ -1342,10 +1480,58 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
             subjectOptions: [],
             selectedClass: '',
             selectedSubject: '',
+            studentIdentityLinks: [],
+            studentResults: [],
+            studentItemResults: [],
             rows: []
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load item analysis data.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.delete('/teacher/item-analysis', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const classValue = typeof req.query.class === 'string' ? req.query.class.trim() : '';
+    const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can delete item analysis records.' });
+    }
+
+    if (!classValue || !subject) {
+        return res.status(400).json({ message: 'Class and subject are required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const db = mongoose.connection.db;
+
+        if (!db) {
+            return res.status(503).json({ message: 'Database is unavailable.' });
+        }
+
+        const result = await db.collection('teacher_item_analysis').deleteOne({
+            teacherEmail: normalizedTeacherEmail,
+            class: classValue,
+            subject
+        });
+
+        if (!result.deletedCount) {
+            return res.status(404).json({ message: 'Item analysis record not found.' });
+        }
+
+        return res.json({ message: 'Item analysis record deleted successfully.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete item analysis record.';
         return res.status(500).json({ message });
     }
 });
@@ -1574,6 +1760,76 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
     }
 });
 
+app.delete('/teacher/my-classes/:classId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { classId } = req.params as { classId?: string };
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can delete assigned classes.' });
+    }
+
+    if (!classId?.trim()) {
+        return res.status(400).json({ message: 'Class id is required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. Class deletion is disabled until database connectivity is restored.'
+        });
+    }
+
+    try {
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const StudentModel = Student as mongoose.Model<StudentRecord>;
+        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+
+        if (!teacherAccount) {
+            return res.status(403).json({ message: 'Only valid teachers can delete assigned classes.' });
+        }
+
+        const classRecord = await ClassSectionModel.findById(classId).lean();
+        if (!classRecord) {
+            return res.status(404).json({ message: 'Class record not found.' });
+        }
+
+        const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+        if (normalizeTeacherDisplayName(classRecord.teacherName) !== normalizeTeacherDisplayName(teacherDisplayName)) {
+            return res.status(403).json({ message: 'You can only delete your assigned classes.' });
+        }
+
+        const db = mongoose.connection.db;
+        if (!db) {
+            return res.status(503).json({ message: 'Database is unavailable.' });
+        }
+
+        await ClassSectionModel.deleteOne({ _id: classId });
+        await StudentModel.deleteMany({ classId, teacherEmail: normalizedTeacherEmail });
+
+        const classCandidates = Array.from(new Set([
+            classRecord.className,
+            `${classRecord.gradeLevel} - ${classRecord.section}`,
+            `${classRecord.gradeLevel}-${classRecord.section}`,
+            `${classRecord.gradeLevel} ${classRecord.section}`
+        ].map((value) => String(value ?? '').trim()).filter((value) => value.length > 0)));
+
+        if (classCandidates.length > 0) {
+            await db.collection('teacher_item_analysis').deleteMany({
+                teacherEmail: normalizedTeacherEmail,
+                subject: classRecord.subject,
+                class: { $in: classCandidates }
+            });
+        }
+
+        return res.json({ message: 'Class and related records deleted successfully.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete class record.';
+        return res.status(500).json({ message });
+    }
+});
+
 app.get('/teacher/students', async (req: Request, res: Response) => {
     const requesterRole = req.header('x-user-role');
     const requesterEmail = req.header('x-user-email');
@@ -1584,6 +1840,131 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
     }
 
     const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+
+    const normalizeStudentNameForRanking = (name: string): string => {
+        return name
+            .toLowerCase()
+            .replace(/\./g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const buildStudentNameCandidates = (student: {
+        name: string;
+        firstName?: string;
+        lastName?: string;
+    }): string[] => {
+        const candidates = new Set<string>();
+        const fullName = normalizeStudentNameForRanking(student.name);
+        const firstLastName = normalizeStudentNameForRanking(`${student.firstName ?? ''} ${student.lastName ?? ''}`);
+        const lastName = normalizeStudentNameForRanking(student.lastName ?? '');
+
+        if (fullName) {
+            candidates.add(fullName);
+        }
+
+        if (firstLastName) {
+            candidates.add(firstLastName);
+        }
+
+        if (lastName) {
+            candidates.add(lastName);
+        }
+
+        return Array.from(candidates);
+    };
+
+    const buildStudentClassCandidates = (student: {
+        grade: string;
+        section?: string;
+        subject?: string;
+    }): string[] => {
+        const candidates = new Set<string>();
+        const grade = normalizeStudentNameForRanking(student.grade);
+        const section = normalizeStudentNameForRanking(student.section ?? '');
+        const subject = normalizeStudentNameForRanking(student.subject ?? '');
+
+        if (grade) {
+            candidates.add(grade);
+        }
+
+        if (section) {
+            candidates.add(section);
+        }
+
+        if (grade && section) {
+            candidates.add(`${grade} - ${section}`);
+            candidates.add(`${grade} ${section}`);
+        }
+
+        if (grade && subject) {
+            candidates.add(`${grade} - ${subject}`);
+            candidates.add(`${grade} ${subject}`);
+        }
+
+        return Array.from(candidates);
+    };
+
+    const buildRankingLookup = async (students: Array<{
+        id: string;
+        name: string;
+        firstName?: string;
+        lastName?: string;
+        grade: string;
+        section?: string;
+        subject: string;
+    }>) => {
+        const db = mongoose.connection.db;
+        if (!db) {
+            return new Map<string, number>();
+        }
+
+        const uploads = await db.collection('teacher_item_analysis').find({
+            teacherEmail: normalizedTeacherEmail
+        }).toArray() as Array<Record<string, unknown>>;
+
+        const rankingLookup = new Map<string, number>();
+
+        students.forEach((student) => {
+            const classCandidates = buildStudentClassCandidates(student);
+            const subjectToken = normalizeStudentNameForRanking(student.subject);
+            const upload = uploads.find((entry) => {
+                const uploadClass = normalizeStudentNameForRanking(String(entry.class ?? ''));
+                const uploadSubject = normalizeStudentNameForRanking(String(entry.subject ?? ''));
+                return Boolean(uploadClass && uploadSubject && subjectToken && uploadSubject === subjectToken && classCandidates.includes(uploadClass));
+            });
+
+            if (!upload) {
+                rankingLookup.set(student.id, 0);
+                return;
+            }
+
+            const studentResults = Array.isArray(upload.studentResults)
+                ? upload.studentResults as Array<Record<string, unknown>>
+                : [];
+
+            const nameCandidates = buildStudentNameCandidates(student);
+
+            const matchedResult = studentResults.find((entry) => {
+                const uploadStudentName = normalizeStudentNameForRanking(String(entry.studentName ?? ''));
+                if (nameCandidates.includes(uploadStudentName)) {
+                    return true;
+                }
+
+                const uploadedTokens = uploadStudentName.split(' ').filter(Boolean);
+                const studentLastName = normalizeStudentNameForRanking(student.lastName ?? '');
+                return uploadedTokens.length === 1 && studentLastName && uploadedTokens[0] === studentLastName;
+            });
+
+            const rank = typeof matchedResult?.rank === 'number' && Number.isFinite(matchedResult.rank)
+                ? matchedResult.rank
+                : 0;
+
+            rankingLookup.set(student.id, rank);
+        });
+
+        return rankingLookup;
+    };
 
     const parseNameParts = (fullName: string): { firstName: string; middleInitial: string; lastName: string } => {
         const tokens = fullName.trim().split(/\s+/).filter(Boolean);
@@ -1641,8 +2022,15 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
                 q4Score: student.q4Score,
                 average: formatAverage(student),
                 classId: student.classId,
-                subject: student.subject
+                subject: student.subject,
+                ranking: 0
             }));
+
+        const rankingLookup = await buildRankingLookup(students);
+        const studentsWithRanking = students.map((student) => ({
+            ...student,
+            ranking: rankingLookup.get(student.id) ?? 0
+        }));
 
         const classItem = classId ? memoryClasses.get(classId) : undefined;
         const classLabel = classItem ? `${classItem.gradeLevel} - ${classItem.section} (${classItem.subject})` : 'All Classes';
@@ -1651,7 +2039,7 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             title: 'Student Management',
             systemLabel: 'MANAGE YOUR STUDENTS',
             classLabel,
-            students
+            students: studentsWithRanking
         });
     }
 
@@ -1690,7 +2078,14 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             q4Score: student.q4Score ?? 0,
             average: formatAverage(student),
             classId: student.classId,
-            subject: student.subject
+            subject: student.subject,
+            ranking: typeof student.ranking === 'number' ? student.ranking : 0
+        }));
+
+        const rankingLookup = await buildRankingLookup(students);
+        const studentsWithRanking = students.map((student) => ({
+            ...student,
+            ranking: rankingLookup.get(student.id) ?? 0
         }));
 
         let classLabel = 'All Classes';
@@ -1705,7 +2100,7 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             title: 'Student Management',
             systemLabel: 'MANAGE YOUR STUDENTS',
             classLabel,
-            students
+            students: studentsWithRanking
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load student records.';
@@ -1879,6 +2274,249 @@ app.post('/teacher/students', async (req: Request, res: Response) => {
     }
 });
 
+app.post('/teacher/students/upload-class-list', upload.single('file'), async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const requestWithFile = req as RequestWithFile;
+    const classId = typeof req.body.classId === 'string' ? req.body.classId.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can upload class lists.' });
+    }
+
+    if (!classId) {
+        return res.status(400).json({ message: 'Class is required.' });
+    }
+
+    if (!requestWithFile.file) {
+        return res.status(400).json({ message: 'No file uploaded. Use form-data field name "file".' });
+    }
+
+    const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+
+    const normalizeHeader = (header: string): string => header.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const parseNameParts = (fullName: string): { firstName: string; middleInitial: string; lastName: string } => {
+        const tokens = fullName.trim().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) {
+            return { firstName: '', middleInitial: '', lastName: '' };
+        }
+        if (tokens.length === 1) {
+            return { firstName: tokens[0] ?? '', middleInitial: '', lastName: '' };
+        }
+
+        const firstName = tokens[0] ?? '';
+        const lastName = tokens[tokens.length - 1] ?? '';
+        const middleInitial = tokens.length > 2 ? (tokens[1]?.charAt(0).toUpperCase() ?? '') : '';
+        return { firstName, middleInitial, lastName };
+    };
+
+    const toStringValue = (value: unknown): string => {
+        if (typeof value === 'string') {
+            return value.trim();
+        }
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return String(value);
+        }
+        return '';
+    };
+
+    const mapRowsToStudents = (rows: Array<Record<string, unknown>>) => {
+        return rows
+            .map((rawRow) => {
+                const normalizedRow = Object.entries(rawRow).reduce<Record<string, string>>((accumulator, [header, value]) => {
+                    accumulator[normalizeHeader(header)] = toStringValue(value);
+                    return accumulator;
+                }, {});
+
+                const firstName = normalizedRow.firstname || normalizedRow.fname || normalizedRow.givenname || '';
+                const lastName = normalizedRow.lastname || normalizedRow.lname || normalizedRow.surname || '';
+                const fullName = normalizedRow.studentname || normalizedRow.name || normalizedRow.learnername || '';
+                const derivedParts = fullName ? parseNameParts(fullName) : { firstName: '', middleInitial: '', lastName: '' };
+
+                const normalizedFirstName = (firstName || derivedParts.firstName).trim();
+                const normalizedLastName = (lastName || derivedParts.lastName).trim();
+                const middleInitial = (normalizedRow.middleinitial || normalizedRow.mi || derivedParts.middleInitial || '').trim().slice(0, 1).toUpperCase();
+                const gender = (normalizedRow.gender || normalizedRow.sex || '').trim();
+
+                if (!normalizedFirstName || !normalizedLastName) {
+                    return null;
+                }
+
+                const full = `${normalizedFirstName}${middleInitial ? ` ${middleInitial}.` : ''} ${normalizedLastName}`.trim();
+
+                return {
+                    firstName: normalizedFirstName,
+                    middleInitial,
+                    lastName: normalizedLastName,
+                    gender,
+                    name: full
+                };
+            })
+            .filter((entry): entry is { firstName: string; middleInitial: string; lastName: string; gender: string; name: string } => Boolean(entry));
+    };
+
+    try {
+        const workbook = XLSX.read(requestWithFile.file.buffer, { type: 'buffer' });
+        const firstSheetName = workbook.SheetNames[0];
+
+        if (!firstSheetName) {
+            return res.status(400).json({ message: 'The uploaded file has no worksheet to process.' });
+        }
+
+        const worksheet = workbook.Sheets[firstSheetName];
+        if (!worksheet) {
+            return res.status(400).json({ message: 'Unable to read worksheet from uploaded file.' });
+        }
+
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
+        const parsedStudents = mapRowsToStudents(rawRows);
+
+        if (!parsedStudents.length) {
+            return res.status(400).json({ message: 'No valid students found. Expected Firstname and Lastname columns (or a Name column).' });
+        }
+
+        if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
+            const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
+
+            if (!fallbackTeacher) {
+                return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
+            }
+
+            const classItem = memoryClasses.get(classId);
+            if (!classItem) {
+                return res.status(404).json({ message: 'Class not found.' });
+            }
+
+            const classTeacherName = normalizeTeacherDisplayName(classItem.teacherName);
+            const requesterTeacherName = normalizeTeacherDisplayName(getTeacherDisplayNameFromUser(fallbackTeacher));
+            if (classTeacherName !== requesterTeacherName) {
+                return res.status(403).json({ message: 'You can only upload class lists to your assigned class.' });
+            }
+
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            for (const studentEntry of parsedStudents) {
+                const alreadyExists = Array.from(memoryStudents.values()).some((existing) => {
+                    return existing.teacherEmail === normalizedTeacherEmail
+                        && existing.classId === classId
+                        && existing.firstName.trim().toLowerCase() === studentEntry.firstName.toLowerCase()
+                        && existing.lastName.trim().toLowerCase() === studentEntry.lastName.toLowerCase();
+                });
+
+                if (alreadyExists) {
+                    skippedCount += 1;
+                    continue;
+                }
+
+                const studentId = randomBytes(12).toString('hex');
+                memoryStudents.set(studentId, {
+                    id: studentId,
+                    classId,
+                    teacherEmail: normalizedTeacherEmail,
+                    name: studentEntry.name,
+                    firstName: studentEntry.firstName,
+                    middleInitial: studentEntry.middleInitial,
+                    lastName: studentEntry.lastName,
+                    gender: studentEntry.gender,
+                    grade: classItem.gradeLevel,
+                    section: classItem.section,
+                    subject: classItem.subject,
+                    q1Score: 0,
+                    q2Score: 0,
+                    q3Score: 0,
+                    q4Score: 0
+                });
+
+                addedCount += 1;
+            }
+
+            return res.status(201).json({
+                message: 'Class list processed successfully.',
+                processedCount: parsedStudents.length,
+                addedCount,
+                skippedCount
+            });
+        }
+
+        if (!isDatabaseReady()) {
+            return res.status(503).json({
+                message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+            });
+        }
+
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const StudentModel = Student as mongoose.Model<StudentRecord>;
+        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+
+        if (!teacherAccount) {
+            return res.status(403).json({ message: 'Only valid teachers can upload class lists.' });
+        }
+
+        const classRecord = await ClassSectionModel.findOne({ _id: classId }).lean();
+        if (!classRecord) {
+            return res.status(404).json({ message: 'Class not found.' });
+        }
+
+        const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+        if (normalizeTeacherDisplayName(classRecord.teacherName) !== normalizeTeacherDisplayName(teacherDisplayName)) {
+            return res.status(403).json({ message: 'You can only upload class lists to your assigned class.' });
+        }
+
+        const existingStudents = await StudentModel.find({
+            teacherEmail: normalizedTeacherEmail,
+            classId
+        }).select({ firstName: 1, lastName: 1 }).lean();
+
+        const existingKeys = new Set(existingStudents.map((student) => `${(student.firstName ?? '').trim().toLowerCase()}::${(student.lastName ?? '').trim().toLowerCase()}`));
+        const documentsToInsert: StudentRecord[] = [];
+        let skippedCount = 0;
+
+        for (const studentEntry of parsedStudents) {
+            const key = `${studentEntry.firstName.toLowerCase()}::${studentEntry.lastName.toLowerCase()}`;
+            if (existingKeys.has(key)) {
+                skippedCount += 1;
+                continue;
+            }
+
+            documentsToInsert.push({
+                classId,
+                teacherEmail: normalizedTeacherEmail,
+                name: studentEntry.name,
+                firstName: studentEntry.firstName,
+                middleInitial: studentEntry.middleInitial,
+                lastName: studentEntry.lastName,
+                gender: studentEntry.gender,
+                grade: classRecord.gradeLevel,
+                section: classRecord.section,
+                subject: classRecord.subject,
+                q1Score: 0,
+                q2Score: 0,
+                q3Score: 0,
+                q4Score: 0
+            });
+
+            existingKeys.add(key);
+        }
+
+        if (documentsToInsert.length > 0) {
+            await StudentModel.insertMany(documentsToInsert, { ordered: false });
+        }
+
+        return res.status(201).json({
+            message: 'Class list processed successfully.',
+            processedCount: parsedStudents.length,
+            addedCount: documentsToInsert.length,
+            skippedCount
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to process class list upload.';
+        return res.status(500).json({ message });
+    }
+});
+
 app.put('/teacher/students/:studentId', async (req: Request, res: Response) => {
     const requesterRole = req.header('x-user-role');
     const requesterEmail = req.header('x-user-email');
@@ -2001,6 +2639,50 @@ app.put('/teacher/students/:studentId', async (req: Request, res: Response) => {
     }
 });
 
+app.delete('/teacher/students/:studentId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const { studentId } = req.params as { studentId?: string };
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can delete students.' });
+    }
+
+    if (!studentId?.trim()) {
+        return res.status(400).json({ message: 'Student id is required.' });
+    }
+
+    const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. Student deletion is disabled until database connectivity is restored.'
+        });
+    }
+
+    try {
+        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+        const StudentModel = Student as mongoose.Model<StudentRecord>;
+        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+
+        if (!teacherAccount) {
+            return res.status(403).json({ message: 'Only valid teachers can delete students.' });
+        }
+
+        const existingStudent = await StudentModel.findById(studentId).lean();
+        if (!existingStudent || normalizeEmail(existingStudent.teacherEmail) !== normalizedTeacherEmail) {
+            return res.status(404).json({ message: 'Student not found.' });
+        }
+
+        await StudentModel.deleteOne({ _id: studentId });
+
+        return res.json({ message: 'Student deleted successfully.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete student.';
+        return res.status(500).json({ message });
+    }
+});
+
 app.post('/api/item-analysis/compute', upload.single('file'), async (req: Request, res: Response) => {
     const requestWithFile = req as RequestWithFile;
     const { class: classValue, subject, quarter } = req.body as { class?: string; subject?: string; quarter?: string };
@@ -2049,12 +2731,100 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
         // Store the analysis with teacher and class info
         const db = mongoose.connection.db;
         if (db && classValue && subject && requesterEmail) {
+            const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+            const normalizeName = (value: string): string => value
+                .toLowerCase()
+                .replace(/\./g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const parseClassLabel = (value: string): { gradeLevel: string; section: string } => {
+                const parts = value.split('-').map((token) => token.trim()).filter(Boolean);
+                if (parts.length >= 2) {
+                    return { gradeLevel: parts[0] ?? '', section: parts.slice(1).join(' - ') };
+                }
+
+                return { gradeLevel: value.trim(), section: '' };
+            };
+
+            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+            const StudentModel = Student as mongoose.Model<StudentRecord>;
+            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+
+            let resolvedClassId = classValue;
+            if (teacherAccount) {
+                const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+                let classRecord = mongoose.Types.ObjectId.isValid(classValue)
+                    ? await ClassSectionModel.findOne({ _id: classValue }).lean()
+                    : null;
+
+                if (!classRecord) {
+                    const parsedClass = parseClassLabel(classValue);
+                    classRecord = await ClassSectionModel.findOne({
+                        gradeLevel: parsedClass.gradeLevel,
+                        section: parsedClass.section,
+                        subject,
+                        teacherName: teacherDisplayName
+                    }).lean();
+                }
+
+                if (classRecord) {
+                    resolvedClassId = String(classRecord._id ?? classRecord.id ?? classValue);
+                }
+            }
+
+            const studentsInClass = await StudentModel.find({
+                teacherEmail: normalizedTeacherEmail,
+                classId: resolvedClassId
+            }).lean();
+
+            const studentsByFullName = new Map<string, StudentRecord>();
+            const studentsByLastName = new Map<string, StudentRecord[]>();
+
+            studentsInClass.forEach((student) => {
+                const fullNameKey = normalizeName(student.name ?? `${student.firstName ?? ''} ${student.lastName ?? ''}`);
+                if (fullNameKey) {
+                    studentsByFullName.set(fullNameKey, student);
+                }
+
+                const lastNameKey = normalizeName(student.lastName ?? '');
+                if (lastNameKey) {
+                    const existing = studentsByLastName.get(lastNameKey) ?? [];
+                    existing.push(student);
+                    studentsByLastName.set(lastNameKey, existing);
+                }
+            });
+
+            const studentIdentityLinks = analysis.studentResults.map((result) => {
+                const uploadedName = String(result.studentName ?? '').trim();
+                const uploadedNameKey = normalizeName(uploadedName);
+                const uploadedNameParts = uploadedNameKey.split(' ').filter(Boolean);
+                const uploadedLastName = uploadedNameParts[uploadedNameParts.length - 1] ?? '';
+
+                const fullNameMatch = studentsByFullName.get(uploadedNameKey);
+                const lastNameCandidates = uploadedLastName ? (studentsByLastName.get(uploadedLastName) ?? []) : [];
+                const matchedStudent = fullNameMatch ?? (lastNameCandidates.length === 1 ? lastNameCandidates[0] : undefined);
+                const matchType = fullNameMatch ? 'full-name' : (matchedStudent ? 'last-name' : 'unmatched');
+
+                return {
+                    uploadedStudentName: uploadedName,
+                    rank: result.rank,
+                    totalScore: result.totalScore,
+                    matchedStudentId: matchedStudent?._id ? String(matchedStudent._id) : null,
+                    matchedFirstName: matchedStudent?.firstName ?? null,
+                    matchedLastName: matchedStudent?.lastName ?? null,
+                    matchType
+                };
+            });
+
             const analysisData = {
                 class: classValue,
                 subject,
                 quarter: quarter ?? '',
                 teacherEmail: requesterEmail,
                 timestamp: new Date(),
+                studentIdentityLinks,
                 ...analysis
             };
             await db.collection('teacher_item_analysis').updateOne(
@@ -2062,6 +2832,20 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                 { $set: analysisData },
                 { upsert: true }
             );
+
+            // Update student rankings using matched student identities.
+            const rankingUpdates = studentIdentityLinks
+                .filter((link) => typeof link.rank === 'number' && link.rank > 0 && typeof link.matchedStudentId === 'string' && link.matchedStudentId)
+                .map((link) => {
+                    return StudentModel.updateOne(
+                        { _id: link.matchedStudentId },
+                        { $set: { ranking: link.rank } }
+                    );
+                });
+
+            if (rankingUpdates.length > 0) {
+                await Promise.all(rankingUpdates);
+            }
         }
 
         return res.json(analysis);
@@ -2830,7 +3614,7 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
         const averageIndexValue = ((selectedAnalysis.summary as Record<string, unknown>)?.avgDiscrimination ?? 0) as number;
 
         const response: AdminItemAnalysisResponse = {
-            title: selectedClass ? `My Item Analysis - ${selectedClass}` : 'Item Analysis',
+            title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
             classOptions,
             classSubjectMap,
             subjectOptions,
@@ -2859,6 +3643,60 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
 
+    const calculateMemoryClassMetrics = (classId: string): { studentCount: number; avgScore: number; passRate: number } => {
+        const students = Array.from(memoryStudents.values()).filter((student) => student.classId === classId);
+        const studentCount = students.length;
+
+        if (!studentCount) {
+            return { studentCount: 0, avgScore: 0, passRate: 0 };
+        }
+
+        const totalAverage = students.reduce((sum, student) => {
+            const studentAverage = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
+            return sum + studentAverage;
+        }, 0);
+        const passCount = students.filter((student) => {
+            const studentAverage = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
+            return studentAverage >= 75;
+        }).length;
+
+        return {
+            studentCount,
+            avgScore: totalAverage / studentCount,
+            passRate: (passCount / studentCount) * 100
+        };
+    };
+
+    const computeTeacherMetrics = (
+        teacherName: string,
+        classEntries: Array<{ id: string; teacherName: string }>,
+        classMetricsById: Map<string, { studentCount: number; avgScore: number; passRate: number }>
+    ): { averageScore: number; passRate: number } => {
+        const normalizedName = normalizeTeacherDisplayName(teacherName);
+        const teacherClasses = classEntries.filter((classEntry) => normalizeTeacherDisplayName(classEntry.teacherName) === normalizedName);
+
+        const weightedTotals = teacherClasses.reduce((accumulator, classEntry) => {
+            const metrics = classMetricsById.get(classEntry.id);
+            const studentCount = metrics?.studentCount ?? 0;
+            const avgScore = metrics?.avgScore ?? 0;
+            const passRate = metrics?.passRate ?? 0;
+
+            accumulator.weight += studentCount;
+            accumulator.scoreWeighted += avgScore * studentCount;
+            accumulator.passWeighted += passRate * studentCount;
+            return accumulator;
+        }, { weight: 0, scoreWeighted: 0, passWeighted: 0 });
+
+        if (!weightedTotals.weight) {
+            return { averageScore: 0, passRate: 0 };
+        }
+
+        return {
+            averageScore: weightedTotals.scoreWeighted / weightedTotals.weight,
+            passRate: weightedTotals.passWeighted / weightedTotals.weight
+        };
+    };
+
     if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
         const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
 
@@ -2866,10 +3704,31 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
             return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
         }
 
+        const classEntries = Array.from(memoryClasses.values()).map((classItem) => ({
+            id: classItem.id,
+            teacherName: classItem.teacherName
+        }));
+        const classMetricsById = new Map(
+            classEntries.map((classEntry) => [classEntry.id, calculateMemoryClassMetrics(classEntry.id)])
+        );
+
         const teachers = buildTeacherListWithClassAssignments(
             Array.from(getMemoryStoreByRole('teacher').values()),
             Array.from(memoryClasses.values())
         )
+            .map((teacher) => {
+                const metrics = computeTeacherMetrics(
+                    getTeacherDisplayNameFromUser({ firstName: teacher.firstName, lastName: teacher.lastName }),
+                    classEntries,
+                    classMetricsById
+                );
+
+                return {
+                    ...teacher,
+                    averageScore: Number(metrics.averageScore.toFixed(1)),
+                    passRate: Number(metrics.passRate.toFixed(1))
+                };
+            })
             .sort((first, second) => first.lastName.localeCompare(second.lastName));
 
         return res.json({ teachers });
@@ -2885,6 +3744,7 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
         const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
         const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
         const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+        const StudentModel = Student as mongoose.Model<StudentRecord>;
         const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
 
         if (!adminAccount) {
@@ -2896,7 +3756,73 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
             .sort({ updatedAt: 1, createdAt: 1 })
             .lean();
 
-        const teachers = buildTeacherListWithClassAssignments(teacherRecords, classRecords);
+        const classEntries = classRecords.map((classRecord) => ({
+            id: String(classRecord._id ?? classRecord.id ?? `${classRecord.className}-${classRecord.section}`),
+            teacherName: classRecord.teacherName
+        }));
+        const classIds = classEntries.map((classEntry) => classEntry.id);
+
+        const classPerformanceAggregate = await StudentModel.aggregate<{
+            _id: string;
+            studentCount: number;
+            totalAverage: number;
+            passCount: number;
+        }>([
+            {
+                $match: {
+                    classId: { $in: classIds }
+                }
+            },
+            {
+                $addFields: {
+                    studentAverage: {
+                        $avg: [
+                            { $ifNull: ['$q1Score', 0] },
+                            { $ifNull: ['$q2Score', 0] },
+                            { $ifNull: ['$q3Score', 0] },
+                            { $ifNull: ['$q4Score', 0] }
+                        ]
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: '$classId',
+                    studentCount: { $sum: 1 },
+                    totalAverage: { $sum: '$studentAverage' },
+                    passCount: {
+                        $sum: {
+                            $cond: [{ $gte: ['$studentAverage', 75] }, 1, 0]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const classMetricsById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
+        for (const classMetric of classPerformanceAggregate) {
+            const studentCount = classMetric.studentCount;
+            classMetricsById.set(classMetric._id, {
+                studentCount,
+                avgScore: studentCount ? classMetric.totalAverage / studentCount : 0,
+                passRate: studentCount ? (classMetric.passCount / studentCount) * 100 : 0
+            });
+        }
+
+        const teachers = buildTeacherListWithClassAssignments(teacherRecords, classRecords)
+            .map((teacher) => {
+                const metrics = computeTeacherMetrics(
+                    getTeacherDisplayNameFromUser({ firstName: teacher.firstName, lastName: teacher.lastName }),
+                    classEntries,
+                    classMetricsById
+                );
+
+                return {
+                    ...teacher,
+                    averageScore: Number(metrics.averageScore.toFixed(1)),
+                    passRate: Number(metrics.passRate.toFixed(1))
+                };
+            });
 
         return res.json({ teachers });
     } catch (error) {

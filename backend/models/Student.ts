@@ -79,6 +79,11 @@ const studentSchema = new mongoose.Schema(
             default: 0,
             min: 0,
             max: 100
+        },
+        ranking: {
+            type: Number,
+            default: 0,
+            min: 0
         }
     },
     {

@@ -27,6 +27,15 @@ const AnalysisIcon = () => (
 	</svg>
 );
 
+const TosIcon = () => (
+	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M7 4h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
+		<line x1="9" y1="9" x2="15" y2="9" />
+		<line x1="9" y1="13" x2="15" y2="13" />
+		<line x1="9" y1="17" x2="13" y2="17" />
+	</svg>
+);
+
 const ReportsIcon = () => (
 	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
 		<path d="M7 4h7l4 4v12H7z" />
@@ -89,19 +98,23 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 				<nav className="teacher-menu" aria-label="Teacher navigation">
 					<NavLink to="/teacher/dashboard" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><DashboardIcon /></span>
-						<span className="teacher-menu-item-label">My Dashboard</span>
+						<span className="teacher-menu-item-label">Dashboard</span>
 					</NavLink>
 					<NavLink to="/teacher/item-analysis" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><AnalysisIcon /></span>
 						<span className="teacher-menu-item-label">Item Analysis</span>
 					</NavLink>
+					<NavLink to="/teacher/tos-builder" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+						<span className="teacher-menu-item-icon"><TosIcon /></span>
+						<span className="teacher-menu-item-label">TOS Builder</span>
+					</NavLink>
 					<NavLink to="/teacher/my-classes" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><ClassesIcon /></span>
-						<span className="teacher-menu-item-label">My Classes</span>
+						<span className="teacher-menu-item-label">Classes</span>
 					</NavLink>
 					<NavLink to="/teacher/my-reports" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><ReportsIcon /></span>
-						<span className="teacher-menu-item-label">My Reports</span>
+						<span className="teacher-menu-item-label">Reports</span>
 					</NavLink>
 				</nav>
 

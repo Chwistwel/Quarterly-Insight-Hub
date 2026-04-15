@@ -14,6 +14,18 @@
 	gap: 0.8rem;
 }
 
+.student-upload-btn {
+	height: 34px;
+	padding: 0 1rem;
+	font-size: 0.84rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--surface-soft);
+	color: var(--brand);
+	font-weight: 700;
+	cursor: pointer;
+}
+
 .student-add-btn {
 	height: 34px;
 	padding: 0 1rem;
@@ -38,6 +50,19 @@
 .student-average-cell {
 	font-weight: 700;
 	color: var(--brand);
+}
+
+.student-upload-file-name {
+	margin: 0;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	font-weight: 600;
+}
+
+.student-upload-hint {
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
 }
 
 .student-actions {
@@ -130,6 +155,32 @@
 	color: var(--text-primary);
 	padding: 0 0.75rem;
 	font-size: 0.9rem;
+}
+
+.student-modal-actions {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.student-delete-btn {
+	height: 38px;
+	padding: 0 0.85rem;
+	border: 1px solid #cf4159;
+	border-radius: 10px;
+	background: #fff4f6;
+	color: #a10f2a;
+	font-weight: 700;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	cursor: pointer;
+}
+
+.student-delete-btn:disabled {
+	opacity: 0.65;
+	cursor: not-allowed;
 }
 
 @media (max-width: 900px) {
