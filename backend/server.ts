@@ -9,6 +9,8 @@ import Teacher from './models/Teacher.js';
 import Administrator from './models/Administrator.js';
 import ClassSection from './models/ClassSection.js';
 import Student from './models/Student.js';
+import TosBlueprint from './models/TosBlueprint.js';
+import TosBlueprintHistory from './models/TosBlueprintHistory.js';
 
 // 1. Load environment variables from .env file
 dotenv.config();
@@ -235,6 +237,44 @@ type AdminItemAnalysisResponse = {
     rows: AdminItemAnalysisRow[];
 };
 
+type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
+
+type TosRowRecord = {
+    id: number;
+    competency: string;
+    days: number;
+    percentage: number;
+    counts: Record<TosBloomKey, number>;
+};
+
+type TosBlueprintRecord = {
+    teacherEmail: string;
+    schoolYear: string;
+    quarter: string;
+    classValue: string;
+    subject: string;
+    totalDays: number;
+    totalItems: number;
+    objectiveCount: number;
+    bloomWeights: Record<TosBloomKey, number>;
+    rows: TosRowRecord[];
+    latestHistoryVersion?: number;
+};
+
+type TosBlueprintHistoryRecord = TosBlueprintRecord & {
+    version: number;
+    savedAt: string;
+};
+
+type TosBlueprintResponse = TosBlueprintRecord & {
+    version: number;
+    historyCount: number;
+};
+
+type TosBlueprintHistoryResponse = {
+    history: TosBlueprintHistoryRecord[];
+};
+
 type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
     role: UserRole;
     user: TUser;
@@ -255,6 +295,86 @@ function isSupportedRole(role: unknown): role is UserRole {
 
 function getModelByRole(role: UserRole) {
     return role === 'teacher' ? Teacher : Administrator;
+}
+
+function sanitizeTosNumber(value: unknown): number {
+    const parsed = typeof value === 'number' ? value : Number(value);
+
+    if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+        return 0;
+    }
+
+    return Math.max(0, parsed);
+}
+
+function normalizeTosBloomWeights(weights: unknown): Record<TosBloomKey, number> {
+    const source = (weights ?? {}) as Partial<Record<TosBloomKey, unknown>>;
+
+    return {
+        remembering: sanitizeTosNumber(source.remembering),
+        understanding: sanitizeTosNumber(source.understanding),
+        applying: sanitizeTosNumber(source.applying),
+        analyzing: sanitizeTosNumber(source.analyzing),
+        evaluating: sanitizeTosNumber(source.evaluating),
+        creating: sanitizeTosNumber(source.creating)
+    };
+}
+
+function normalizeTosRows(rows: unknown): TosRowRecord[] {
+    if (!Array.isArray(rows)) {
+        return [];
+    }
+
+    return rows.map((row, index) => {
+        const current = (row ?? {}) as Partial<TosRowRecord>;
+        return {
+            id: Math.max(1, Math.floor(sanitizeTosNumber(current.id) || index + 1)),
+            competency: String(current.competency ?? '').trim() || `Objective ${index + 1}`,
+            days: Math.floor(sanitizeTosNumber(current.days)),
+            percentage: Number(sanitizeTosNumber(current.percentage).toFixed(2)),
+            counts: {
+                remembering: Math.floor(sanitizeTosNumber(current.counts?.remembering)),
+                understanding: Math.floor(sanitizeTosNumber(current.counts?.understanding)),
+                applying: Math.floor(sanitizeTosNumber(current.counts?.applying)),
+                analyzing: Math.floor(sanitizeTosNumber(current.counts?.analyzing)),
+                evaluating: Math.floor(sanitizeTosNumber(current.counts?.evaluating)),
+                creating: Math.floor(sanitizeTosNumber(current.counts?.creating))
+            }
+        };
+    });
+}
+
+function buildTosRecordId(teacherEmail: string, schoolYear: string, classValue: string, subject: string, quarter: string): string {
+    return [teacherEmail, schoolYear, classValue, subject, quarter]
+        .map((value) => value.trim().toLowerCase())
+        .join('::');
+}
+
+function normalizeTosRecord(body: unknown, requesterEmail: string): TosBlueprintRecord {
+    const payload = (body ?? {}) as Partial<TosBlueprintRecord>;
+
+    return {
+        teacherEmail: normalizeEmail(requesterEmail),
+        schoolYear: String(payload.schoolYear ?? '').trim(),
+        quarter: String(payload.quarter ?? '').trim(),
+        classValue: String(payload.classValue ?? '').trim(),
+        subject: String(payload.subject ?? '').trim(),
+        totalDays: Math.floor(sanitizeTosNumber(payload.totalDays)),
+        totalItems: Math.floor(sanitizeTosNumber(payload.totalItems)),
+        objectiveCount: Math.max(1, Math.floor(sanitizeTosNumber(payload.objectiveCount) || 1)),
+        bloomWeights: normalizeTosBloomWeights(payload.bloomWeights),
+        rows: normalizeTosRows(payload.rows),
+        latestHistoryVersion: Math.max(0, Math.floor(sanitizeTosNumber(payload.latestHistoryVersion)))
+    };
+}
+
+function validateTosRecord(record: TosBlueprintRecord): string | null {
+    if (!record.schoolYear) return 'School year is required.';
+    if (!record.quarter) return 'Quarter is required.';
+    if (!record.classValue) return 'Class is required.';
+    if (!record.subject) return 'Subject is required.';
+    if (!record.rows.length) return 'At least one TOS objective row is required.';
+    return null;
 }
 
 function normalizeEmail(email: string): string {
@@ -1347,18 +1467,25 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
         const db = mongoose.connection.db;
         if (db) {
             const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
+            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
+            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
             const uploads = await db.collection('teacher_item_analysis')
                 .find({ teacherEmail: normalizedTeacherEmail })
                 .sort({ timestamp: -1 })
                 .toArray() as Array<Record<string, unknown>>;
 
-            const classOptions = Array.from(
-                new Set(
-                    uploads
-                        .map((upload) => String(upload.class ?? '').trim())
-                        .filter((value) => value.length > 0)
-                )
-            );
+            const teacherDisplayName = teacherAccount ? getTeacherDisplayNameFromUser(teacherAccount) : '';
+            const assignedClassName = String(teacherAccount?.className ?? '').trim();
+            const classRecords = teacherDisplayName
+                ? await ClassSectionModel.find({ teacherName: teacherDisplayName }).sort({ gradeLevel: 1, section: 1 }).lean()
+                : [];
+            const filteredClassRecords = assignedClassName
+                ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
+                : classRecords;
+            const classOptions = filteredClassRecords.length
+                ? filteredClassRecords.map((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section))
+                : (assignedClassName ? [assignedClassName] : []);
 
             const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)
                 ? selectedClassQuery
@@ -1600,12 +1727,16 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
             }
 
             const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+            const assignedClassName = String(teacherAccount.className ?? '').trim();
             const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).lean();
+            const filteredClassRecords = assignedClassName
+                ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
+                : classRecords;
 
             const gradeSet = new Set<string>();
             const subjectSet = new Set<string>();
 
-            for (const classItem of classRecords) {
+            for (const classItem of filteredClassRecords) {
                 const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
                 gradeSet.add(classLabel);
                 subjectSet.add(classItem.subject);
@@ -1635,6 +1766,234 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load upload metadata.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.get('/teacher/tos', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const schoolYear = typeof req.query.schoolYear === 'string' ? req.query.schoolYear.trim() : '';
+    const quarter = typeof req.query.quarter === 'string' ? req.query.quarter.trim() : '';
+    const classValue = typeof req.query.classValue === 'string' ? req.query.classValue.trim() : '';
+    const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can view saved TOS drafts.' });
+    }
+
+    if (!schoolYear || !quarter || !classValue || !subject) {
+        return res.status(400).json({ message: 'School year, quarter, class, and subject are required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.' });
+    }
+
+    try {
+        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const filter = {
+            teacherEmail: normalizedTeacherEmail,
+            schoolYear,
+            quarter,
+            classValue,
+            subject
+        };
+
+        const blueprint = await TosBlueprintModel.findOne(filter).lean();
+
+        if (!blueprint) {
+            return res.status(404).json({ message: 'No saved TOS draft found.' });
+        }
+
+        const historyCount = await TosBlueprintHistoryModel.countDocuments(filter);
+
+        return res.json({
+            blueprint: {
+                ...blueprint,
+                version: blueprint.latestHistoryVersion ?? historyCount,
+                historyCount
+            }
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load saved TOS draft.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.get('/teacher/tos/history', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const schoolYear = typeof req.query.schoolYear === 'string' ? req.query.schoolYear.trim() : '';
+    const quarter = typeof req.query.quarter === 'string' ? req.query.quarter.trim() : '';
+    const classValue = typeof req.query.classValue === 'string' ? req.query.classValue.trim() : '';
+    const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can view TOS history.' });
+    }
+
+    if (!schoolYear || !quarter || !classValue || !subject) {
+        return res.status(400).json({ message: 'School year, quarter, class, and subject are required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.' });
+    }
+
+    try {
+        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const filter = {
+            teacherEmail: normalizedTeacherEmail,
+            schoolYear,
+            quarter,
+            classValue,
+            subject
+        };
+
+        const history = await TosBlueprintHistoryModel.find(filter)
+            .sort({ version: -1, savedAt: -1 })
+            .lean();
+
+        return res.json({
+            history: history.map((entry) => ({
+                ...entry,
+                id: String(entry._id ?? `${entry.teacherEmail}-${entry.version}`)
+            }))
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load TOS history.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.delete('/teacher/tos/history/:historyId', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const historyId = typeof req.params.historyId === 'string' ? req.params.historyId.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can delete TOS history.' });
+    }
+
+    if (!historyId) {
+        return res.status(400).json({ message: 'History id is required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.' });
+    }
+
+    try {
+        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+
+        const historyEntry = await TosBlueprintHistoryModel.findOne({
+            _id: historyId,
+            teacherEmail: normalizedTeacherEmail
+        }).lean();
+
+        if (!historyEntry) {
+            return res.status(404).json({ message: 'TOS history entry not found.' });
+        }
+
+        await TosBlueprintHistoryModel.deleteOne({ _id: historyId, teacherEmail: normalizedTeacherEmail });
+
+        const filter = {
+            teacherEmail: normalizedTeacherEmail,
+            schoolYear: historyEntry.schoolYear,
+            quarter: historyEntry.quarter,
+            classValue: historyEntry.classValue,
+            subject: historyEntry.subject
+        };
+
+        const latestHistory = await TosBlueprintHistoryModel.findOne(filter).sort({ version: -1, savedAt: -1 }).lean();
+
+        await TosBlueprintModel.updateOne(
+            filter,
+            {
+                $set: {
+                    latestHistoryVersion: latestHistory?.version ?? 0
+                }
+            }
+        );
+
+        return res.json({ message: 'TOS history entry deleted.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete TOS history.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.post('/teacher/tos', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can save TOS drafts.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.' });
+    }
+
+    try {
+        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const record = normalizeTosRecord(req.body, normalizedTeacherEmail);
+        const validationError = validateTosRecord(record);
+
+        if (validationError) {
+            return res.status(400).json({ message: validationError });
+        }
+
+        const filter = {
+            teacherEmail: record.teacherEmail,
+            schoolYear: record.schoolYear,
+            quarter: record.quarter,
+            classValue: record.classValue,
+            subject: record.subject
+        };
+
+        const current = await TosBlueprintModel.findOne(filter).lean();
+        const nextVersion = (current?.latestHistoryVersion ?? 0) + 1;
+        const savedAt = new Date();
+
+        await TosBlueprintModel.updateOne(
+            filter,
+            {
+                $set: {
+                    ...record,
+                    latestHistoryVersion: nextVersion
+                }
+            },
+            { upsert: true }
+        );
+
+        await TosBlueprintHistoryModel.create({
+            ...record,
+            version: nextVersion,
+            savedAt
+        });
+
+        const historyCount = await TosBlueprintHistoryModel.countDocuments(filter);
+
+        return res.json({
+            message: 'TOS saved successfully.',
+            blueprint: {
+                ...record,
+                version: nextVersion,
+                historyCount
+            },
+            savedAt: savedAt.toISOString()
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to save TOS draft.';
         return res.status(500).json({ message });
     }
 });
@@ -1675,8 +2034,10 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
         }
 
         const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
+        const assignedClassName = String((fallbackTeacher as { className?: string }).className ?? '').trim();
         const classRecords = Array.from(memoryClasses.values())
             .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase())
+            .filter((classItem) => !assignedClassName || buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
             .map((classItem) => ({
                 id: classItem.id,
                 grade: classItem.gradeLevel,
@@ -1721,8 +2082,12 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
         }
 
         const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
+        const assignedClassName = String(teacherAccount.className ?? '').trim();
         const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).sort({ gradeLevel: 1, section: 1 }).lean();
-        const classIds = classRecords.map((classItem) => String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`));
+        const filteredClassRecords = assignedClassName
+            ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
+            : classRecords;
+        const classIds = filteredClassRecords.map((classItem) => String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`));
         const studentCounts = await StudentModel.aggregate<{ _id: string; count: number }>([
             {
                 $match: {
@@ -1739,7 +2104,7 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
         ]);
         const studentCountMap = new Map(studentCounts.map((item) => [item._id, item.count]));
 
-        const classes = classRecords.map((classItem) => {
+        const classes = filteredClassRecords.map((classItem) => {
             const classId = String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`);
 
             return {
@@ -2833,13 +3198,29 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                 { upsert: true }
             );
 
-            // Update student rankings using matched student identities.
-            const rankingUpdates = studentIdentityLinks
+            // Update student rankings using matched student identities and compact ranks to avoid gaps.
+            const matchedRankingLinks = studentIdentityLinks
                 .filter((link) => typeof link.rank === 'number' && link.rank > 0 && typeof link.matchedStudentId === 'string' && link.matchedStudentId)
-                .map((link) => {
+                .sort((first, second) => {
+                    const firstRank = Number(first.rank) || Number.MAX_SAFE_INTEGER;
+                    const secondRank = Number(second.rank) || Number.MAX_SAFE_INTEGER;
+                    return firstRank - secondRank;
+                });
+
+            const compactRankByStudentId = new Map<string, number>();
+            matchedRankingLinks.forEach((link) => {
+                const studentId = String(link.matchedStudentId ?? '').trim();
+                if (!studentId || compactRankByStudentId.has(studentId)) {
+                    return;
+                }
+                compactRankByStudentId.set(studentId, compactRankByStudentId.size + 1);
+            });
+
+            const rankingUpdates = Array.from(compactRankByStudentId.entries())
+                .map(([studentId, compactRank]) => {
                     return StudentModel.updateOne(
-                        { _id: link.matchedStudentId },
-                        { $set: { ranking: link.rank } }
+                        { _id: studentId },
+                        { $set: { ranking: compactRank } }
                     );
                 });
 

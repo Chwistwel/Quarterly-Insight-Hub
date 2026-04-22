@@ -76,6 +76,26 @@ function average(values: number[]): number {
 	return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function parseClassLabel(classLabel: string): { grade: string; section: string } {
+	const parts = classLabel.split('-').map((token) => token.trim()).filter(Boolean);
+	if (!parts.length) {
+		return { grade: '', section: '' };
+	}
+
+	return {
+		grade: parts[0] ?? '',
+		section: parts.slice(1).join(' - ')
+	};
+}
+
+function normalizeStudentIdentityToken(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/\./g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 function toCsvSafe(value: string | number): string {
 	const text = String(value ?? '');
 	if (text.includes(',') || text.includes('"') || text.includes('\n')) {
@@ -113,13 +133,17 @@ function MyReports() {
 	const [generatingReport, setGeneratingReport] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [reportError, setReportError] = useState<string | null>(null);
+	const resolvedClass = (itemAnalysisData?.selectedClass ?? selectedClass).trim();
+	const resolvedSubject = (itemAnalysisData?.selectedSubject ?? selectedSubject).trim();
+	const resolvedQuarter = (itemAnalysisData?.selectedQuarter ?? selectedQuarter).trim();
+	const resolvedClassParts = useMemo(() => parseClassLabel(resolvedClass), [resolvedClass]);
 
 	const selectedLinkedRecord = useMemo(() => {
-		if (!selectedClass || !selectedSubject || !selectedQuarter) {
+		if (!resolvedClass || !resolvedSubject || !resolvedQuarter) {
 			return null;
 		}
-		return findLinkedTosRecord(selectedClass, selectedSubject, selectedQuarter);
-	}, [selectedClass, selectedSubject, selectedQuarter]);
+		return findLinkedTosRecord(resolvedClass, resolvedSubject, resolvedQuarter);
+	}, [resolvedClass, resolvedSubject, resolvedQuarter]);
 
 	const availableSubjectOptions = useMemo(() => {
 		if (!selectedClass) {
@@ -134,29 +158,84 @@ function MyReports() {
 
 	const filteredStudents = useMemo(() => {
 		return students.filter((student) => {
-			const classMatch = !selectedClass || student.grade === selectedClass;
-			const subjectMatch = !selectedSubject || student.subject === selectedSubject;
+			const classMatch = !resolvedClass
+				|| (
+					student.grade.trim() === resolvedClassParts.grade
+					&& (!resolvedClassParts.section || student.section.trim() === resolvedClassParts.section)
+				);
+			const subjectMatch = !resolvedSubject || student.subject.trim().toLowerCase() === resolvedSubject.toLowerCase();
 			return classMatch && subjectMatch;
 		});
-	}, [students, selectedClass, selectedSubject]);
+	}, [students, resolvedClass, resolvedClassParts.grade, resolvedClassParts.section, resolvedSubject]);
+
+	const rosterStudents = useMemo(() => {
+		const seen = new Set<string>();
+		const unique: StudentRecord[] = [];
+
+		filteredStudents.forEach((student) => {
+			const idToken = (student.id ?? '').trim();
+			const nameToken = normalizeStudentIdentityToken(
+				`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim() || student.name
+			);
+			const key = idToken || nameToken;
+
+			if (!key || seen.has(key)) {
+				return;
+			}
+
+			seen.add(key);
+			unique.push(student);
+		});
+
+		return unique;
+	}, [filteredStudents]);
+
+	const analysisStudentCount = useMemo(() => {
+		const matchedCount = Array.from(
+			new Set(
+				(itemAnalysisData?.studentIdentityLinks ?? [])
+					.map((link) => String(link.matchedStudentId ?? '').trim())
+					.filter((id) => id.length > 0)
+			)
+		).length;
+		if (matchedCount > 0) {
+			return matchedCount;
+		}
+
+		const explicitCount = Math.round(toNumber(itemAnalysisData?.totalStudents));
+		if (explicitCount > 0) {
+			return explicitCount;
+		}
+
+		const byLinks = itemAnalysisData?.studentIdentityLinks?.length ?? 0;
+		if (byLinks > 0) {
+			return byLinks;
+		}
+
+		return itemAnalysisData?.studentResults?.length ?? 0;
+	}, [itemAnalysisData?.totalStudents, itemAnalysisData?.studentIdentityLinks, itemAnalysisData?.studentResults]);
+
+	const enrolledStudentCount = rosterStudents.length;
+	const analysisRespondentCount = analysisStudentCount > 0 ? analysisStudentCount : enrolledStudentCount;
 
 	const scoreSummary = useMemo(() => {
-		const scores = filteredStudents.map((student) => toNumber(student.average));
+		const scores = rosterStudents.map((student) => toNumber(student.average));
 		const highest = scores.length ? Math.max(...scores) : 0;
 		const lowest = scores.length ? Math.min(...scores) : 0;
 		const passCount = scores.filter((score) => score >= 75).length;
 		const failCount = scores.length - passCount;
-		const top27Count = Math.max(1, Math.round(scores.length * 0.27));
+		const top27Count = analysisRespondentCount > 0 ? Math.max(1, Math.round(analysisRespondentCount * 0.27)) : 0;
 
 		return {
-			totalStudents: scores.length,
+			totalStudents: enrolledStudentCount,
+			respondentCount: analysisRespondentCount,
 			highest,
 			lowest,
 			passCount,
 			failCount,
 			top27Count
 		};
-	}, [filteredStudents]);
+	}, [rosterStudents, enrolledStudentCount, analysisRespondentCount]);
 
 	const reportRows = useMemo<ReportRow[]>(() => {
 		const sourceRows = itemAnalysisData?.rows ?? [];
@@ -174,12 +253,12 @@ function MyReports() {
 				difficultyLabel: getDifficultyLabel(difficultyIndex),
 				discriminationLabel: getDiscriminationLabel(discriminationIndex),
 				decision: getDecision(discriminationIndex),
-				totalCorrect: Math.round(difficultyIndex * Math.max(scoreSummary.totalStudents, 1)),
+				totalCorrect: Math.round(difficultyIndex * analysisRespondentCount),
 				contentArea,
 				intervention
 			};
 		});
-	}, [itemAnalysisData?.rows, selectedLinkedRecord, scoreSummary.totalStudents]);
+	}, [itemAnalysisData?.rows, selectedLinkedRecord, analysisRespondentCount]);
 
 	const entryDrivenRows = useMemo(() => {
 		return reportRows.filter((row) => {
@@ -227,20 +306,20 @@ function MyReports() {
 		const avgDifficulty = average(reportRows.map((row) => row.difficultyIndex));
 		const avgDiscrimination = average(reportRows.map((row) => row.discriminationIndex));
 		return {
-			meanScore: average(filteredStudents.map((student) => toNumber(student.average))),
-			totalScore: filteredStudents.reduce((sum, student) => sum + toNumber(student.average), 0),
+			meanScore: average(rosterStudents.map((student) => toNumber(student.average))),
+			totalScore: rosterStudents.reduce((sum, student) => sum + toNumber(student.average), 0),
 			mps: avgDifficulty * 100,
 			difficultyAverage: avgDifficulty,
 			discriminationAverage: avgDiscrimination
 		};
-	}, [reportRows, filteredStudents]);
+	}, [reportRows, rosterStudents]);
 
 	const contextToken = useMemo(() => {
-		const classToken = (selectedClass || 'Class').replace(/\s+/g, '-');
-		const subjectToken = (selectedSubject || 'Subject').replace(/\s+/g, '-');
-		const quarterToken = (selectedQuarter || 'Quarter').replace(/\s+/g, '-');
+		const classToken = (resolvedClass || 'Class').replace(/\s+/g, '-');
+		const subjectToken = (resolvedSubject || 'Subject').replace(/\s+/g, '-');
+		const quarterToken = (resolvedQuarter || 'Quarter').replace(/\s+/g, '-');
 		return `${classToken}_${subjectToken}_${quarterToken}`;
-	}, [selectedClass, selectedSubject, selectedQuarter]);
+	}, [resolvedClass, resolvedSubject, resolvedQuarter]);
 
 	const updatedAtLabel = useMemo(
 		() => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
@@ -272,9 +351,9 @@ function MyReports() {
 			`class-performance-summary_${contextToken}.csv`,
 			['Class', 'Subject', 'Quarter', 'Total Students', 'Highest Score', 'Lowest Score', 'Mean Score', 'MPS', 'Passing', 'Failing'],
 			[[
-				selectedClass || 'N/A',
-				selectedSubject || 'N/A',
-				selectedQuarter || 'N/A',
+				resolvedClass || 'N/A',
+				resolvedSubject || 'N/A',
+				resolvedQuarter || 'N/A',
 				scoreSummary.totalStudents,
 				scoreSummary.highest.toFixed(2),
 				scoreSummary.lowest.toFixed(2),
@@ -287,7 +366,7 @@ function MyReports() {
 	};
 
 	const handleDownloadStudentRanking = () => {
-		const sortedStudents = [...filteredStudents]
+		const sortedStudents = [...rosterStudents]
 			.sort((first, second) => (Number(first.ranking) || 0) - (Number(second.ranking) || 0));
 
 		downloadCsvFile(
@@ -337,7 +416,7 @@ function MyReports() {
 	};
 
 	const hasReportData = reportRows.length > 0;
-	const hasStudentData = filteredStudents.length > 0;
+	const hasStudentData = rosterStudents.length > 0;
 
 	const downloadableReports = useMemo<DownloadableReport[]>(() => {
 		return [
@@ -513,7 +592,7 @@ function MyReports() {
 						<p>Division of Olongapo</p>
 						<p>KALALAKE ELEMENTARY SCHOOL</p>
 						<h3>Item Analysis in the selected class and subject</h3>
-						<strong>{selectedClass || 'Class'} | {selectedSubject || 'Subject'} | SY {selectedLinkedRecord?.schoolYear || 'N/A'}</strong>
+						<strong>{resolvedClass || 'Class'} | {resolvedSubject || 'Subject'} | SY {selectedLinkedRecord?.schoolYear || 'N/A'}</strong>
 					</div>
 					<div className="print-report-logo">DepEd</div>
 				</header>
@@ -533,9 +612,14 @@ function MyReports() {
 					</div>
 					<div>
 						<p>Grading period</p>
-						<strong>{(selectedQuarter || 'FIRST').toUpperCase()}</strong>
+						<strong>{(resolvedQuarter || 'FIRST').toUpperCase()}</strong>
 					</div>
 				</div>
+				{scoreSummary.respondentCount !== scoreSummary.totalStudents ? (
+					<p className="teacher-status">
+						Analysis respondents: {scoreSummary.respondentCount} | Enrolled class size: {scoreSummary.totalStudents}
+					</p>
+				) : null}
 
 				<div className="teacher-table-wrap print-report-main-table">
 					<table className="teacher-table print-report-table">

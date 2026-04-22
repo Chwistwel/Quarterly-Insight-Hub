@@ -9,26 +9,53 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.7rem;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 }
 
-.teacher-heading-actions {
-	display: inline-flex;
+
+.teacher-heading-title-group {
+	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	flex-wrap: wrap;
+	gap: 0.65rem;
+	flex: 1 1 auto;
+	min-width: 0;
+	flex-wrap: nowrap;
 }
 
-.teacher-item-analysis-upload-btn {
-	height: 34px;
-	border: 1px solid var(--border-strong);
+.teacher-heading-title-group h2 {
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+.teacher-heading-title-group .teacher-item-analysis-dropdown {
+	flex: 0 0 auto;
+}
+
+.teacher-item-analysis-create-btn {
+	height: 44px;
+	border: 1px solid #263673;
 	border-radius: 999px;
-	padding: 0 0.75rem;
-	background: var(--surface);
-	color: var(--brand);
-	font-size: 0.78rem;
+	padding: 0 1.2rem;
+	background: #263673;
+	color: #ffffff;
+	font-size: 0.95rem;
 	font-weight: 700;
 	cursor: pointer;
+	box-shadow: 0 8px 18px rgba(38, 54, 115, 0.18);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45rem;
+}
+
+.teacher-item-analysis-create-btn:hover {
+	background: #1f2d63;
+	border-color: #1f2d63;
+}
+
+.teacher-item-analysis-create-icon {
+	width: 1rem;
+	height: 1rem;
 }
 
 .teacher-item-analysis-edit-btn,
@@ -57,10 +84,6 @@
 .teacher-item-analysis-delete-btn:disabled {
 	opacity: 0.65;
 	cursor: not-allowed;
-}
-
-.teacher-item-analysis-upload-btn:hover {
-	background: var(--surface-soft);
 }
 
 .teacher-item-analysis-modal-backdrop {
@@ -143,6 +166,14 @@
 	gap: 0.55rem;
 }
 
+.teacher-tabs-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
 .teacher-tabs {
 	display: inline-flex;
 	align-items: center;
@@ -177,15 +208,36 @@
 	color: var(--brand);
 }
 
+.teacher-tabs-row .teacher-item-analysis-create-btn {
+	height: 40px;
+	min-width: 134px;
+	padding: 0 1rem;
+	font-size: 0.86rem;
+	box-shadow: 0 6px 14px rgba(38, 54, 115, 0.15);
+}
+
 .teacher-item-analysis-panel {
 	display: grid;
 	gap: 0.85rem;
+}
+
+.teacher-item-analysis-panel-title-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6rem;
+	min-width: 0;
+	flex: 1 1 auto;
+	flex-wrap: nowrap;
 }
 
 .teacher-item-analysis-panel-head {
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 0.75rem;
+}
+
+.teacher-item-analysis-panel-actions {
+	flex-shrink: 0;
 }
 
 .teacher-item-analysis-panel-head h2 {
@@ -360,8 +412,30 @@
 		grid-template-columns: 1fr;
 	}
 
+	.teacher-tabs-row {
+		justify-content: flex-start;
+	}
+
 	.teacher-heading-row {
 		align-items: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.teacher-heading-title-group {
+		flex-wrap: wrap;
+	}
+
+	.teacher-heading-inline-actions {
+		flex-wrap: wrap;
+	}
+
+	.teacher-item-analysis-panel-head {
+		align-items: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.teacher-item-analysis-panel-title-group {
+		flex-wrap: wrap;
 	}
 
 }

@@ -194,6 +194,39 @@ export type UploadClassListResult = {
 	processedCount: number;
 };
 
+export type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
+
+export type TosRowPayload = {
+	id: number;
+	competency: string;
+	days: number;
+	percentage: number;
+	counts: Record<TosBloomKey, number>;
+};
+
+export type TosBlueprintPayload = {
+	schoolYear: string;
+	quarter: string;
+	classValue: string;
+	subject: string;
+	totalDays: number;
+	totalItems: number;
+	objectiveCount: number;
+	bloomWeights: Record<TosBloomKey, number>;
+	rows: TosRowPayload[];
+};
+
+export type TosBlueprintRecord = TosBlueprintPayload & {
+	version: number;
+	historyCount: number;
+};
+
+export type TosBlueprintHistoryEntry = TosBlueprintPayload & {
+	id: string;
+	version: number;
+	savedAt: string;
+};
+
 function getTeacherAuthHeaders(): Record<string, string> {
 	const role = localStorage.getItem('userRole') ?? '';
 	const email = localStorage.getItem('userEmail') ?? '';
@@ -425,4 +458,50 @@ export async function uploadStudentClassList(classId: string, file: File): Promi
 	}
 
 	return response.json() as Promise<UploadClassListResult>;
+}
+
+export async function getTeacherTosBlueprint(query: Pick<TosBlueprintPayload, 'schoolYear' | 'quarter' | 'classValue' | 'subject'>): Promise<TosBlueprintRecord | null> {
+	const params = new URLSearchParams(query as Record<string, string>);
+	try {
+		const payload = await fetchJson<{ blueprint: TosBlueprintRecord }>(`/teacher/tos?${params.toString()}`, {
+			method: 'GET',
+			headers: getTeacherAuthHeaders()
+		});
+		return payload.blueprint;
+	} catch {
+		return null;
+	}
+}
+
+export async function getTeacherTosBlueprintHistory(query: Pick<TosBlueprintPayload, 'schoolYear' | 'quarter' | 'classValue' | 'subject'>): Promise<TosBlueprintHistoryEntry[]> {
+	const params = new URLSearchParams(query as Record<string, string>);
+	try {
+		const payload = await fetchJson<{ history: TosBlueprintHistoryEntry[] }>(`/teacher/tos/history?${params.toString()}`, {
+			method: 'GET',
+			headers: getTeacherAuthHeaders()
+		});
+		return Array.isArray(payload.history) ? payload.history : [];
+	} catch {
+		return [];
+}
+}
+
+export async function deleteTeacherTosHistoryEntry(historyId: string): Promise<void> {
+	await fetchJson<{ message: string }>(`/teacher/tos/history/${encodeURIComponent(historyId)}`, {
+		method: 'DELETE',
+		headers: getTeacherAuthHeaders()
+	});
+}
+
+export async function saveTeacherTosBlueprint(payload: TosBlueprintPayload): Promise<TosBlueprintRecord> {
+	const response = await fetchJson<{ message: string; blueprint: TosBlueprintRecord; savedAt: string }>('/teacher/tos', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			...getTeacherAuthHeaders()
+		},
+		body: JSON.stringify(payload)
+	});
+
+	return response.blueprint;
 }

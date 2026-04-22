@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { EditIcon, TrashIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
-import { getUploadMetaData, type UploadMetaResponse } from '../../services/teacherPortalApi';
+import {
+	deleteTeacherTosHistoryEntry,
+	getTeacherTosBlueprint,
+	getTeacherTosBlueprintHistory,
+	getUploadMetaData,
+	saveTeacherTosBlueprint,
+	type TosBlueprintHistoryEntry,
+	type TosBlueprintPayload,
+	type UploadMetaResponse
+} from '../../services/teacherPortalApi';
 import '../../styles/TEACHER/TOSBuilder.css';
 
 type BloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
@@ -34,6 +45,21 @@ const DEFAULT_BLOOM_WEIGHTS: Record<BloomKey, number> = {
 };
 
 const STORAGE_KEY = 'teacher-tos-builder-draft';
+
+function formatSavedAtLabel(savedAt: string): string {
+	const date = new Date(savedAt);
+	if (Number.isNaN(date.getTime())) {
+		return savedAt;
+	}
+
+	return date.toLocaleString([], {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	});
+}
 
 function createEmptyRow(index: number): TosRow {
 	return {
@@ -92,6 +118,38 @@ function buildInitialRows(count: number): TosRow[] {
 	return Array.from({ length: count }, (_, index) => createEmptyRow(index));
 }
 
+function getRowDistributionWeights(rows: TosRow[]): number[] {
+	const itemWeights = rows.map((row) => BLOOM_ORDER.reduce((sum, key) => sum + row.counts[key], 0));
+	const totalItems = itemWeights.reduce((sum, value) => sum + value, 0);
+	if (totalItems > 0) {
+		return itemWeights;
+	}
+
+	const percentWeights = rows.map((row) => sanitizeNumber(row.percentage));
+	const totalPercent = percentWeights.reduce((sum, value) => sum + value, 0);
+	if (totalPercent > 0) {
+		return percentWeights;
+	}
+
+	return rows.map(() => 1);
+}
+
+function applyDaysFromDistribution(rows: TosRow[], totalDays: number): TosRow[] {
+	const safeTotalDays = Math.max(1, Math.floor(sanitizeNumber(totalDays)));
+	const weights = getRowDistributionWeights(rows);
+	const daysAllocation = allocateByWeights(safeTotalDays, weights);
+
+	return rows.map((row, index) => {
+		const days = daysAllocation[index] ?? 0;
+		const percentage = Number(((days / safeTotalDays) * 100).toFixed(2));
+		return {
+			...row,
+			days,
+			percentage
+		};
+	});
+}
+
 function TOSBuilder() {
 	const [schoolYear, setSchoolYear] = useState('2025-2026');
 	const [quarter, setQuarter] = useState('1st Quarter');
@@ -104,6 +162,12 @@ function TOSBuilder() {
 	const [bloomWeights, setBloomWeights] = useState<Record<BloomKey, number>>(DEFAULT_BLOOM_WEIGHTS);
 	const [statusMessage, setStatusMessage] = useState('');
 	const [uploadMeta, setUploadMeta] = useState<UploadMetaResponse | null>(null);
+	const [lastSavedAt, setLastSavedAt] = useState<string>('');
+	const [savedHistory, setSavedHistory] = useState<TosBlueprintHistoryEntry[]>([]);
+	const [loadingSavedHistory, setLoadingSavedHistory] = useState(false);
+	const [savingTos, setSavingTos] = useState(false);
+	const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+	const [deletingHistoryId, setDeletingHistoryId] = useState<string>('');
 
 	useEffect(() => {
 		const loadUploadMeta = async () => {
@@ -178,38 +242,96 @@ function TOSBuilder() {
 	}, []);
 
 	useEffect(() => {
-		localStorage.setItem(
-			STORAGE_KEY,
-			JSON.stringify({
-				schoolYear,
-				quarter,
-				subject,
-				classValue,
-				totalDays,
-				totalItems,
-				objectiveCount,
-				rows,
-				bloomWeights
-			})
-		);
-	}, [schoolYear, quarter, subject, classValue, totalDays, totalItems, objectiveCount, rows, bloomWeights]);
+		if (!schoolYear || !classValue || !subject || !quarter) {
+			setSavedHistory([]);
+			return;
+		}
+
+		let isActive = true;
+		const query = { schoolYear, classValue, subject, quarter };
+
+		const loadSavedTos = async () => {
+			setLoadingSavedHistory(true);
+			try {
+				const [savedBlueprint, history] = await Promise.all([
+					getTeacherTosBlueprint(query),
+					getTeacherTosBlueprintHistory(query)
+				]);
+
+				if (!isActive) {
+					return;
+				}
+
+				if (savedBlueprint) {
+					setSchoolYear(savedBlueprint.schoolYear || schoolYear);
+					setQuarter(savedBlueprint.quarter || quarter);
+					setClassValue(savedBlueprint.classValue || classValue);
+					setSubject(savedBlueprint.subject || subject);
+					setTotalDays(Math.max(1, Math.floor(savedBlueprint.totalDays || totalDays)));
+					setTotalItems(Math.max(1, Math.floor(savedBlueprint.totalItems || totalItems)));
+					setObjectiveCount(Math.max(1, Math.floor(savedBlueprint.objectiveCount || objectiveCount)));
+					setBloomWeights(savedBlueprint.bloomWeights ?? DEFAULT_BLOOM_WEIGHTS);
+
+					if (Array.isArray(savedBlueprint.rows) && savedBlueprint.rows.length > 0) {
+						setRows(savedBlueprint.rows.map((row, index) => ({
+							id: index + 1,
+							competency: row.competency || `Objective ${index + 1}`,
+							days: sanitizeNumber(row.days),
+							percentage: sanitizeNumber(row.percentage),
+							counts: {
+								remembering: sanitizeNumber(row.counts?.remembering ?? 0),
+								understanding: sanitizeNumber(row.counts?.understanding ?? 0),
+								applying: sanitizeNumber(row.counts?.applying ?? 0),
+								analyzing: sanitizeNumber(row.counts?.analyzing ?? 0),
+								evaluating: sanitizeNumber(row.counts?.evaluating ?? 0),
+								creating: sanitizeNumber(row.counts?.creating ?? 0)
+							}
+						})));
+					}
+					setLastSavedAt(formatSavedAtLabel(history[0]?.savedAt ?? new Date().toISOString()));
+				}
+
+				setSavedHistory(history);
+			} catch {
+				if (isActive) {
+					setSavedHistory([]);
+				}
+			} finally {
+				if (isActive) {
+					setLoadingSavedHistory(false);
+				}
+			}
+		};
+
+		void loadSavedTos();
+
+		return () => {
+			isActive = false;
+		};
+	}, [schoolYear, classValue, subject, quarter]);
 
 	useEffect(() => {
 		setRows((currentRows) => {
 			const targetCount = Math.max(1, objectiveCount);
 			if (currentRows.length === targetCount) {
-				return currentRows;
+				return applyDaysFromDistribution(currentRows, totalDays);
 			}
 
-			return Array.from({ length: targetCount }, (_, index) => {
+			const resizedRows = Array.from({ length: targetCount }, (_, index) => {
 				const existing = currentRows[index];
 				if (existing) {
 					return { ...existing, id: index + 1, competency: existing.competency || `Objective ${index + 1}` };
 				}
 				return createEmptyRow(index);
 			});
+
+			return applyDaysFromDistribution(resizedRows, totalDays);
 		});
-	}, [objectiveCount]);
+	}, [objectiveCount, totalDays]);
+
+	useEffect(() => {
+		setRows((currentRows) => applyDaysFromDistribution(currentRows, totalDays));
+	}, [totalDays]);
 
 	const subjectOptions = useMemo(() => {
 		if (!classValue) {
@@ -286,23 +408,49 @@ function TOSBuilder() {
 
 	const automatedReadiness = totalAllocatedItems === totalItems && Math.round(totalAllocatedPercentage) === 100;
 
-	const updateRow = (rowIndex: number, updater: (row: TosRow) => TosRow) => {
+	const updateRow = (rowIndex: number, updater: (row: TosRow) => TosRow, autoComputeDays = false) => {
 		setRows((currentRows) => {
 			const copy = [...currentRows];
 			copy[rowIndex] = updater(copy[rowIndex]);
-			return copy;
+			return autoComputeDays ? applyDaysFromDistribution(copy, totalDays) : copy;
 		});
 	};
 
-	const handleAutoPercentByDays = () => {
-		const safeTotalDays = Math.max(1, totalDays);
-		setRows((currentRows) =>
-			currentRows.map((row) => ({
-				...row,
-				percentage: Number(((row.days / safeTotalDays) * 100).toFixed(2))
-			}))
+	const handleSaveDraft = async () => {
+		if (!schoolYear || !quarter || !classValue || !subject) {
+			setStatusMessage('School year, class, subject, and quarter are required before saving.');
+			return;
+		}
+
+		const blueprintPayload: TosBlueprintPayload = {
+			schoolYear,
+			quarter,
+			classValue,
+			subject,
+			totalDays,
+			totalItems,
+			objectiveCount,
+			bloomWeights,
+			rows
+		};
+
+		localStorage.setItem(
+			STORAGE_KEY,
+			JSON.stringify(blueprintPayload)
 		);
-		setStatusMessage('Percentages were auto-computed based on days.');
+
+		try {
+			setSavingTos(true);
+			const savedBlueprint = await saveTeacherTosBlueprint(blueprintPayload);
+			const savedAt = formatSavedAtLabel(new Date().toISOString());
+			setLastSavedAt(savedAt);
+			setStatusMessage(`TOS saved to database. Version ${savedBlueprint.version}.`);
+			setSavedHistory(await getTeacherTosBlueprintHistory({ schoolYear, classValue, subject, quarter }));
+		} catch (error) {
+			setStatusMessage(error instanceof Error ? error.message : 'Unable to save TOS to database. Draft was kept locally.');
+		} finally {
+			setSavingTos(false);
+		}
 	};
 
 	const handleAutoDistributeItems = () => {
@@ -321,7 +469,7 @@ function TOSBuilder() {
 		}
 
 		setRows((currentRows) =>
-			currentRows.map((row, rowIndex) => ({
+			applyDaysFromDistribution(currentRows.map((row, rowIndex) => ({
 				...row,
 				counts: {
 					remembering: matrix[rowIndex][0],
@@ -331,16 +479,73 @@ function TOSBuilder() {
 					evaluating: matrix[rowIndex][4],
 					creating: matrix[rowIndex][5]
 				}
-			}))
+			})), totalDays)
 		);
 
-		setStatusMessage('Items were auto-distributed across objectives and Bloom taxonomy.');
+		setStatusMessage('Items were auto-distributed, and days were auto-computed from distribution.');
 	};
 
 	const resetToDefaults = () => {
-		setRows(buildInitialRows(objectiveCount));
+		setRows(applyDaysFromDistribution(buildInitialRows(objectiveCount), totalDays));
 		setBloomWeights(DEFAULT_BLOOM_WEIGHTS);
 		setStatusMessage('TOS table was reset to defaults.');
+	};
+
+	const handleSelectHistoryEntry = (entryId: string) => {
+		setSelectedHistoryId((current) => (current === entryId ? null : entryId));
+	};
+
+	const handleEditHistoryEntry = (entry: TosBlueprintHistoryEntry) => {
+		setSchoolYear(entry.schoolYear);
+		setQuarter(entry.quarter);
+		setClassValue(entry.classValue);
+		setSubject(entry.subject);
+		setTotalDays(Math.max(1, Math.floor(entry.totalDays || 1)));
+		setTotalItems(Math.max(1, Math.floor(entry.totalItems || 1)));
+		setObjectiveCount(Math.max(1, Math.floor(entry.objectiveCount || 1)));
+		setBloomWeights(entry.bloomWeights ?? DEFAULT_BLOOM_WEIGHTS);
+		setRows(entry.rows.map((row, index) => ({
+			id: index + 1,
+			competency: row.competency || `Objective ${index + 1}`,
+			days: sanitizeNumber(row.days),
+			percentage: sanitizeNumber(row.percentage),
+			counts: {
+				remembering: sanitizeNumber(row.counts?.remembering ?? 0),
+				understanding: sanitizeNumber(row.counts?.understanding ?? 0),
+				applying: sanitizeNumber(row.counts?.applying ?? 0),
+				analyzing: sanitizeNumber(row.counts?.analyzing ?? 0),
+				evaluating: sanitizeNumber(row.counts?.evaluating ?? 0),
+				creating: sanitizeNumber(row.counts?.creating ?? 0)
+			}
+		})));
+		setStatusMessage(`Version ${entry.version} loaded for editing.`);
+	};
+
+	const handleDeleteHistoryEntry = async (entry: TosBlueprintHistoryEntry) => {
+		const shouldDelete = window.confirm(`Delete TOS history version ${entry.version}?`);
+		if (!shouldDelete) {
+			return;
+		}
+
+		try {
+			setDeletingHistoryId(entry.id);
+			await deleteTeacherTosHistoryEntry(entry.id);
+			const refreshedHistory = await getTeacherTosBlueprintHistory({
+				schoolYear,
+				classValue,
+				subject,
+				quarter
+			});
+			setSavedHistory(refreshedHistory);
+			if (selectedHistoryId === entry.id) {
+				setSelectedHistoryId(null);
+			}
+			setStatusMessage(`Version ${entry.version} was deleted from history.`);
+		} catch (error) {
+			setStatusMessage(error instanceof Error ? error.message : 'Unable to delete TOS history entry.');
+		} finally {
+			setDeletingHistoryId('');
+		}
 	};
 
 	return (
@@ -355,9 +560,27 @@ function TOSBuilder() {
 				</div>
 			</section>
 
+			<div className="teacher-content-toggle-bar" role="tablist" aria-label="Analysis tools">
+				<NavLink
+					to="/teacher/item-analysis"
+					role="tab"
+					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+				>
+					Item Analysis
+				</NavLink>
+				<NavLink
+					to="/teacher/tos-builder"
+					role="tab"
+					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+				>
+					TOS Builder
+				</NavLink>
+			</div>
+
 			{statusMessage ? <p className="teacher-status">{statusMessage}</p> : null}
 
 			<section className="teacher-panel teacher-tos-meta-panel">
+				{lastSavedAt ? <p className="teacher-panel-copy">Last saved: {lastSavedAt}</p> : null}
 				<div className="teacher-tos-meta-grid">
 					<label>
 						School Year
@@ -423,7 +646,7 @@ function TOSBuilder() {
 				</div>
 
 				<div className="teacher-tos-action-row">
-					<button type="button" className="teacher-filter-apply-btn" onClick={handleAutoPercentByDays}>Auto % by Days</button>
+						<button type="button" className="teacher-filter-apply-btn" onClick={handleSaveDraft} disabled={savingTos}>{savingTos ? 'Saving...' : 'Save TOS'}</button>
 					<button type="button" className="teacher-filter-apply-btn" onClick={handleAutoDistributeItems}>Auto Distribute Items</button>
 					<button type="button" className="teacher-secondary-btn" onClick={resetToDefaults}>Reset</button>
 				</div>
@@ -489,10 +712,7 @@ function TOSBuilder() {
 											type="number"
 											min={0}
 											value={row.days}
-											onChange={(event) => {
-												const nextValue = sanitizeNumber(Number(event.target.value));
-												updateRow(rowIndex, (current) => ({ ...current, days: nextValue }));
-											}}
+											readOnly
 										/>
 									</td>
 									<td>
@@ -500,10 +720,7 @@ function TOSBuilder() {
 											type="number"
 											min={0}
 											value={row.percentage}
-											onChange={(event) => {
-												const nextValue = sanitizeNumber(Number(event.target.value));
-												updateRow(rowIndex, (current) => ({ ...current, percentage: nextValue }));
-											}}
+											readOnly
 										/>
 									</td>
 									{BLOOM_ORDER.map((key) => (
@@ -517,7 +734,7 @@ function TOSBuilder() {
 													updateRow(rowIndex, (current) => ({
 														...current,
 														counts: { ...current.counts, [key]: nextValue }
-													}));
+														}), true);
 												}}
 											/>
 										</td>
@@ -589,6 +806,87 @@ function TOSBuilder() {
 					</div>
 				</section>
 			</div>
+
+			<section className="teacher-panel teacher-tos-history-panel">
+				<div className="teacher-panel-head">
+					<h2>TOS Save History</h2>
+					<span>{loadingSavedHistory ? 'Loading history...' : `${savedHistory.length} saved version${savedHistory.length === 1 ? '' : 's'}`}</span>
+				</div>
+				{savedHistory.length ? (
+					<div className="teacher-tos-history-list">
+						{savedHistory.map((entry) => (
+							<article
+								key={entry.id}
+								className={`teacher-tos-history-item${selectedHistoryId === entry.id ? ' active' : ''}`}
+								onClick={() => handleSelectHistoryEntry(entry.id)}
+							>
+								<div className="teacher-tos-history-head">
+									<strong>Version {entry.version}</strong>
+									<div className="teacher-tos-history-actions">
+										<button
+											type="button"
+											className="teacher-tos-history-icon-btn"
+											onClick={(event) => {
+												event.stopPropagation();
+												handleEditHistoryEntry(entry);
+											}}
+											aria-label={`Edit version ${entry.version}`}
+										>
+											<EditIcon className="teacher-tos-history-icon" />
+										</button>
+										<button
+											type="button"
+											className="teacher-tos-history-icon-btn danger"
+											onClick={(event) => {
+												event.stopPropagation();
+												void handleDeleteHistoryEntry(entry);
+											}}
+											disabled={deletingHistoryId === entry.id}
+											aria-label={`Delete version ${entry.version}`}
+										>
+											<TrashIcon className="teacher-tos-history-icon" />
+										</button>
+									</div>
+								</div>
+								<span>{formatSavedAtLabel(entry.savedAt)}</span>
+								<p>{entry.classValue} | {entry.subject} | {entry.quarter}</p>
+								<p>{entry.totalItems} items, {entry.totalDays} days, {entry.objectiveCount} objectives</p>
+								{selectedHistoryId === entry.id ? (
+									<div className="teacher-tos-history-detail">
+										<p>Bloom Weights: R {entry.bloomWeights.remembering}% | U {entry.bloomWeights.understanding}% | A {entry.bloomWeights.applying}% | An {entry.bloomWeights.analyzing}% | E {entry.bloomWeights.evaluating}% | C {entry.bloomWeights.creating}%</p>
+										<div className="teacher-table-wrap">
+											<table className="teacher-table teacher-tos-history-table">
+												<thead>
+													<tr>
+														<th>Objective</th>
+														<th>Competency</th>
+														<th>Days</th>
+														<th>%</th>
+														<th>Total Items</th>
+													</tr>
+												</thead>
+												<tbody>
+													{entry.rows.map((row) => (
+														<tr key={`${entry.id}-${row.id}`}>
+															<td>Objective {row.id}</td>
+															<td>{row.competency}</td>
+															<td>{row.days}</td>
+															<td>{row.percentage}</td>
+															<td>{BLOOM_ORDER.reduce((sum, key) => sum + (row.counts[key] ?? 0), 0)}</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									</div>
+								) : null}
+							</article>
+						))}
+					</div>
+				) : (
+					<p className="teacher-panel-copy">No database history yet for the selected TOS.</p>
+				)}
+			</section>
 		</TeacherLayout>
 	);
 }

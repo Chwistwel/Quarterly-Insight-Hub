@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { PlusIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
 import {
 	deleteTeacherItemAnalysis,
@@ -99,10 +100,8 @@ function ItemAnalysis() {
 	const linkedRecords = useMemo(() => getLinkedTosRecords(), [linkedRecordsVersion]);
 
 	const availableClassOptions = useMemo(() => {
-		const options = new Set<string>(data?.classOptions ?? []);
-		linkedRecords.forEach((record) => options.add(record.classValue));
-		return Array.from(options);
-	}, [data?.classOptions, linkedRecords]);
+		return Array.from(new Set(data?.classOptions ?? []));
+	}, [data?.classOptions]);
 
 	const availableSubjectOptions = useMemo(() => {
 		const options = new Set<string>(data?.subjectOptions ?? []);
@@ -307,6 +306,17 @@ function ItemAnalysis() {
 
 		return individualRows.filter((row) => row.interpretation !== 'Correct');
 	}, [individualRows, selectedIndividualResultFilter]);
+
+	const analysisRowByItemNo = useMemo(() => {
+		const map = new Map<number, { difficultyIndex: string | number; discriminationIndex: string | number }>();
+		(data?.rows ?? []).forEach((row) => {
+			map.set(row.itemNo, {
+				difficultyIndex: row.difficultyIndex,
+				discriminationIndex: row.discriminationIndex
+			});
+		});
+		return map;
+	}, [data?.rows]);
 
 	const getInterpretationClass = (interpretation: string) => {
 		const normalized = interpretation.toLowerCase();
@@ -557,34 +567,28 @@ function ItemAnalysis() {
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'COMPREHENSIVE ITEM ANALYSIS'}</p>
 				<div className="teacher-heading-row">
-					<h2>{data?.title ?? 'Item Analysis'}</h2>
-					<div className="teacher-heading-actions">
-						<button
-							type="button"
-							className="teacher-item-analysis-edit-btn"
-							onClick={handleOpenEditModal}
-							disabled={loading || !data?.selectedClass || !data?.selectedSubject}
-						>
-							Edit
-						</button>
-						<button
-							type="button"
-							className="teacher-item-analysis-delete-btn"
-							onClick={handleDelete}
-							disabled={loading || deletingRecord || !data?.selectedClass || !data?.selectedSubject}
-						>
-							{deletingRecord ? 'Deleting...' : 'Delete'}
-						</button>
-						<button
-							type="button"
-							className="teacher-item-analysis-upload-btn"
-							onClick={() => navigate('/teacher/upload-results')}
-						>
-							Upload Results
-						</button>
+					<div className="teacher-heading-title-group">
+						<h2>{data?.title ?? 'Item Analysis'}</h2>
 					</div>
 				</div>
 			</section>
+
+			<div className="teacher-content-toggle-bar" role="tablist" aria-label="Analysis tools">
+				<NavLink
+					to="/teacher/item-analysis"
+					role="tab"
+					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+				>
+					Item Analysis
+				</NavLink>
+				<NavLink
+					to="/teacher/tos-builder"
+					role="tab"
+					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+				>
+					TOS Builder
+				</NavLink>
+			</div>
 
 			{loading ? <p className="teacher-status">Loading item analysis...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
@@ -675,27 +679,39 @@ function ItemAnalysis() {
 				<button type="button" className="teacher-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>Apply</button>
 			</section>
 
-			<div className="teacher-kpis teacher-kpis-3">
-				<article className="teacher-card">
-					<p>Average Score</p>
-					<strong>{data?.classAverage}</strong>
-				</article>
-				<article className="teacher-card">
-					<p>Average Index</p>
-					<strong>{data?.averageIndex}</strong>
-				</article>
-				<article className="teacher-card">
-					<p>Total Students</p>
-					<strong>{data?.totalStudents}</strong>
-				</article>
+			<div className="teacher-stats-row">
+				<div className="teacher-kpis teacher-kpis-3">
+					<article className="teacher-card">
+						<p>Average Score</p>
+						<strong>{data?.classAverage}</strong>
+					</article>
+					<article className="teacher-card">
+						<p>Average Index</p>
+						<strong>{data?.averageIndex}</strong>
+					</article>
+					<article className="teacher-card">
+						<p>Total Students</p>
+						<strong>{data?.totalStudents}</strong>
+					</article>
+				</div>
 			</div>
 
 			<div className="teacher-tabs-stack">
+				<div className="teacher-tabs-row">
 				<div className="teacher-tabs-wrap">
 					<div className="teacher-tabs teacher-tabs-primary">
 						<button type="button" className={selectedScope === 'all' ? 'active' : ''} onClick={() => setSelectedScope('all')}>All Students</button>
 						<button type="button" className={selectedScope === 'individual' ? 'active' : ''} onClick={() => setSelectedScope('individual')}>Individual</button>
 					</div>
+				</div>
+					<button
+						type="button"
+						className="teacher-item-analysis-create-btn"
+						onClick={() => navigate('/teacher/upload-results')}
+					>
+						<PlusIcon className="teacher-item-analysis-create-icon" />
+						Upload
+					</button>
 				</div>
 			</div>
 
@@ -779,33 +795,51 @@ function ItemAnalysis() {
 
 			<section className="teacher-panel teacher-item-analysis-panel">
 				<div className="teacher-panel-head teacher-item-analysis-panel-head">
-					<div>
+					<div className="teacher-item-analysis-panel-title-group">
 						<h2>Item Analysis</h2>
+						{selectedScope === 'all' ? (
+							<select
+								className="teacher-item-analysis-dropdown"
+								value={selectedPerformance}
+								onChange={(event) => setSelectedPerformance(event.target.value as ItemPerformanceFilter)}
+								aria-label="Filter item analysis by performance"
+							>
+								<option value="all">All Items</option>
+								<option value="excellent">Excellent</option>
+								<option value="good">Good</option>
+								<option value="needs">Needs Improvement</option>
+							</select>
+						) : selectedScope === 'individual' ? (
+							<select
+								className="teacher-item-analysis-dropdown"
+								value={selectedIndividualResultFilter}
+								onChange={(event) => setSelectedIndividualResultFilter(event.target.value as IndividualResultFilter)}
+								aria-label="Filter selected student item results"
+							>
+								<option value="all">All Items</option>
+								<option value="correct">Correct</option>
+								<option value="incorrect">Incorrect</option>
+							</select>
+						) : null}
 					</div>
-					{selectedScope === 'all' ? (
-						<select
-							className="teacher-item-analysis-dropdown"
-							value={selectedPerformance}
-							onChange={(event) => setSelectedPerformance(event.target.value as ItemPerformanceFilter)}
-							aria-label="Filter item analysis by performance"
+					<div className="teacher-heading-inline-actions teacher-item-analysis-panel-actions">
+						<button
+							type="button"
+							className="teacher-item-analysis-edit-btn"
+							onClick={handleOpenEditModal}
+							disabled={loading || !data?.selectedClass || !data?.selectedSubject}
 						>
-							<option value="all">All Items</option>
-							<option value="excellent">Excellent</option>
-							<option value="good">Good</option>
-							<option value="needs">Needs Improvement</option>
-						</select>
-					) : selectedScope === 'individual' ? (
-						<select
-							className="teacher-item-analysis-dropdown"
-							value={selectedIndividualResultFilter}
-							onChange={(event) => setSelectedIndividualResultFilter(event.target.value as IndividualResultFilter)}
-							aria-label="Filter selected student item results"
+							Edit
+						</button>
+						<button
+							type="button"
+							className="teacher-item-analysis-delete-btn"
+							onClick={handleDelete}
+							disabled={loading || deletingRecord || !data?.selectedClass || !data?.selectedSubject}
 						>
-							<option value="all">All Items</option>
-							<option value="correct">Correct</option>
-							<option value="incorrect">Incorrect</option>
-						</select>
-					) : null}
+							{deletingRecord ? 'Deleting...' : 'Delete'}
+						</button>
+					</div>
 				</div>
 
 				{selectedScope === 'individual' ? (
@@ -817,24 +851,28 @@ function ItemAnalysis() {
 								<thead>
 									<tr>
 										<th>Item No.</th>
-										<th>Item</th>
-										<th>Score</th>
+										<th>Difficulty Index</th>
+										<th>Discrimination Index</th>
 										<th>Result</th>
 									</tr>
 								</thead>
 								<tbody>
-									{filteredIndividualRows.map((row) => (
+									{filteredIndividualRows.map((row) => {
+										const analysisRow = analysisRowByItemNo.get(row.itemNo);
+
+										return (
 										<tr key={`individual-row-${selectedStudent?.id}-${row.itemNo}`}>
 											<td>{row.itemNo}</td>
-											<td>{row.item}</td>
-											<td>{row.score}</td>
+											<td>{analysisRow?.difficultyIndex ?? '-'}</td>
+											<td>{analysisRow?.discriminationIndex ?? '-'}</td>
 											<td>
 												<span className={`teacher-badge ${row.interpretation === 'Correct' ? 'excellent' : row.interpretation === 'Partially Correct' ? 'fair' : 'poor'}`}>
 													{row.interpretation}
 												</span>
 											</td>
 										</tr>
-									))}
+										);
+									})}
 								</tbody>
 							</table>
 						</div>

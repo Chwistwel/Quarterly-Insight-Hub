@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LogOutIcon, UserIcon } from '../../components/icons';
 
 type StoredUserProfile = {
@@ -24,15 +24,6 @@ const AnalysisIcon = () => (
 		<line x1="8" y1="16" x2="8" y2="10" />
 		<line x1="12" y1="16" x2="12" y2="7" />
 		<line x1="16" y1="16" x2="16" y2="12" />
-	</svg>
-);
-
-const TosIcon = () => (
-	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-		<path d="M7 4h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
-		<line x1="9" y1="9" x2="15" y2="9" />
-		<line x1="9" y1="13" x2="15" y2="13" />
-		<line x1="9" y1="17" x2="13" y2="17" />
 	</svg>
 );
 
@@ -61,6 +52,7 @@ type TeacherLayoutProps = {
 
 function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const storedProfileText = localStorage.getItem('userProfile');
 	let storedProfile: StoredUserProfile | null = null;
 
@@ -76,6 +68,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 		.filter((value): value is string => Boolean(value))
 		.join(' ');
 	const displayName = fullName || 'Teacher';
+	const isAnalysisRoute = location.pathname.startsWith('/teacher/item-analysis') || location.pathname.startsWith('/teacher/tos-builder');
 
 	const handleLogout = () => {
 		localStorage.removeItem('userRole');
@@ -100,13 +93,12 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 						<span className="teacher-menu-item-icon"><DashboardIcon /></span>
 						<span className="teacher-menu-item-label">Dashboard</span>
 					</NavLink>
-					<NavLink to="/teacher/item-analysis" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+					<NavLink
+						to="/teacher/item-analysis"
+						className={({ isActive }) => `teacher-menu-item${isActive || isAnalysisRoute ? ' active' : ''}`}
+					>
 						<span className="teacher-menu-item-icon"><AnalysisIcon /></span>
-						<span className="teacher-menu-item-label">Item Analysis</span>
-					</NavLink>
-					<NavLink to="/teacher/tos-builder" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
-						<span className="teacher-menu-item-icon"><TosIcon /></span>
-						<span className="teacher-menu-item-label">TOS Builder</span>
+						<span className="teacher-menu-item-label">Analysis Tools</span>
 					</NavLink>
 					<NavLink to="/teacher/my-classes" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
 						<span className="teacher-menu-item-icon"><ClassesIcon /></span>

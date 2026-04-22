@@ -146,6 +146,94 @@
 	align-content: start;
 }
 
+.teacher-tos-history-panel {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.teacher-tos-history-list {
+	display: grid;
+	gap: 0.6rem;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.teacher-tos-history-item {
+	display: grid;
+	gap: 0.3rem;
+	padding: 0.8rem 0.9rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 12px;
+	background: var(--surface-soft);
+	cursor: pointer;
+}
+
+.teacher-tos-history-item.active {
+	border-color: var(--brand);
+	background: color-mix(in srgb, var(--surface-soft) 65%, #dce4ff 35%);
+}
+
+.teacher-tos-history-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.teacher-tos-history-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.teacher-tos-history-icon-btn {
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--brand);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.teacher-tos-history-icon-btn.danger {
+	color: #c43d3d;
+	border-color: #e8b3b3;
+	background: #fff3f3;
+}
+
+.teacher-tos-history-icon {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.teacher-tos-history-detail {
+	display: grid;
+	gap: 0.45rem;
+	margin-top: 0.25rem;
+	padding-top: 0.45rem;
+	border-top: 1px solid var(--border);
+}
+
+.teacher-tos-history-table {
+	min-width: 560px;
+}
+
+.teacher-tos-history-item strong {
+	color: var(--brand);
+	font-size: 0.92rem;
+}
+
+.teacher-tos-history-item span,
+.teacher-tos-history-item p {
+	color: var(--text-secondary);
+	font-size: 0.82rem;
+	margin: 0;
+	line-height: 1.35;
+}
+
 .teacher-tos-placement-wrap {
 	max-height: 300px;
 	overflow: auto;
