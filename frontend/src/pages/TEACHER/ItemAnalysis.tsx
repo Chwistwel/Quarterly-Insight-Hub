@@ -19,9 +19,11 @@ import {
 import '../../styles/TEACHER/ItemAnalysis.css';
 
 type ItemScopeView = 'all' | 'individual';
-type ItemPerformanceFilter = 'all' | 'excellent' | 'good' | 'needs';
-type IndividualResultFilter = 'all' | 'correct' | 'incorrect';
+type ItemPerformanceFilter = 'all' | string;
+type IndividualResultFilter = 'all' | string;
 type IndividualSortBy = 'name' | 'ranking' | 'score';
+
+type DifficultyLevel = 'easy' | 'moderate' | 'difficult' | 'unknown';
 
 type IndividualItemResult = {
 	itemNo: number;
@@ -49,23 +51,91 @@ function normalizeStudentToken(value: string): string {
 		.trim();
 }
 
-function buildNameCandidates(student: { name: string; firstName?: string; lastName?: string }): string[] {
-	const candidates = new Set<string>();
-	const fullName = normalizeStudentToken(student.name ?? '');
-	const firstLast = normalizeStudentToken(`${student.firstName ?? ''} ${student.lastName ?? ''}`);
-	const lastName = normalizeStudentToken(student.lastName ?? '');
+function normalizeStudentIdentifier(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '')
+		.trim();
+}
 
-	if (fullName) {
-		candidates.add(fullName);
-	}
-	if (firstLast) {
-		candidates.add(firstLast);
-	}
-	if (lastName) {
-		candidates.add(lastName);
+function getSimpleStudentId(studentId: string): string {
+	const normalized = String(studentId ?? '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+	if (!normalized) {
+		return '';
 	}
 
-	return Array.from(candidates);
+	return `SID-${normalized.slice(-6)}`;
+}
+
+function getFirstLastKey(firstName: string, lastName: string): string {
+	const normalizedFirstName = normalizeStudentToken(firstName);
+	const normalizedLastName = normalizeStudentToken(lastName);
+	if (!normalizedFirstName || !normalizedLastName) {
+		return '';
+	}
+
+	return `${normalizedFirstName}::${normalizedLastName}`;
+}
+
+function getFirstLastKeyFromFullName(fullName: string): string {
+	const tokens = normalizeStudentToken(fullName).split(' ').filter(Boolean);
+	if (tokens.length === 0) {
+		return '';
+	}
+
+	if (tokens.length === 1) {
+		return '';
+	}
+
+	const firstName = tokens[0] ?? '';
+	const lastName = tokens[tokens.length - 1] ?? '';
+	return getFirstLastKey(firstName, lastName);
+}
+
+function normalizeInterpretation(interpretation: string): string {
+	return interpretation.toLowerCase().trim();
+}
+
+function parseIndexValue(value: string | number): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return value > 1 ? value / 100 : value;
+	}
+
+	if (typeof value === 'string') {
+		const normalized = value.replace(/%/g, '').trim();
+		const parsed = Number(normalized);
+		if (!Number.isFinite(parsed)) {
+			return null;
+		}
+		return parsed > 1 ? parsed / 100 : parsed;
+	}
+
+	return null;
+}
+
+function getDifficultyLevel(value: string | number): DifficultyLevel {
+	const parsedValue = parseIndexValue(value);
+	if (parsedValue === null) {
+		return 'unknown';
+	}
+
+	if (parsedValue >= 0.76) {
+		return 'easy';
+	}
+
+	if (parsedValue >= 0.26) {
+		return 'moderate';
+	}
+
+	return 'difficult';
+}
+
+function getDifficultyLabel(value: string | number): string {
+	const level = getDifficultyLevel(value);
+	if (level === 'easy') return 'Easy';
+	if (level === 'moderate') return 'Moderate';
+	if (level === 'difficult') return 'Difficult';
+	return 'N/A';
 }
 
 function ItemAnalysis() {
@@ -146,19 +216,23 @@ function ItemAnalysis() {
 			return rows;
 		}
 
-		if (selectedPerformance === 'excellent') {
-			return rows.filter((row) => row.interpretation.toLowerCase().includes('excellent'));
-		}
-
-		if (selectedPerformance === 'good') {
-			return rows.filter((row) => row.interpretation.toLowerCase().includes('good'));
-		}
-
-		return rows.filter((row) => {
-			const normalized = row.interpretation.toLowerCase();
-			return normalized.includes('poor') || normalized.includes('needs') || normalized.includes('fair');
-		});
+		return rows.filter((row) => normalizeInterpretation(row.interpretation) === selectedPerformance);
 	}, [data?.rows, selectedPerformance]);
+
+	const allInterpretationFilterOptions = useMemo(() => {
+		const options = new Map<string, string>();
+		(data?.rows ?? []).forEach((row) => {
+			const label = row.interpretation.trim();
+			if (!label) {
+				return;
+			}
+			const value = normalizeInterpretation(label);
+			if (!options.has(value)) {
+				options.set(value, label);
+			}
+		});
+		return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+	}, [data?.rows]);
 
 	const targetAnalysisCount = useMemo(() => {
 		if (typeof data?.totalItems === 'number' && data.totalItems > 0) {
@@ -182,37 +256,64 @@ function ItemAnalysis() {
 	const individualStudents = useMemo<IndividualStudentResult[]>(() => {
 		const classStudentsList = [...(data?.classStudents ?? [])];
 		const studentItemResults = data?.studentItemResults ?? [];
+		const studentIdentityLinks = data?.studentIdentityLinks ?? [];
 
-		const uploadedByName = new Map<string, (typeof studentItemResults)[number]>();
+		const uploadedById = new Map<string, (typeof studentItemResults)[number]>();
+		const uploadedByFirstLast = new Map<string, (typeof studentItemResults)[number]>();
 		const uploadedByLastName = new Map<string, Array<(typeof studentItemResults)[number]>>();
+		const uploadedByMatchedStudentId = new Map<string, (typeof studentItemResults)[number]>();
 
 		studentItemResults.forEach((entry) => {
 			const normalizedName = normalizeStudentToken(entry.studentName ?? '');
+			const normalizedStudentId = normalizeStudentIdentifier(String(entry.studentId ?? ''));
+			const firstLastKey = getFirstLastKeyFromFullName(entry.studentName ?? '');
 			if (normalizedName) {
-				uploadedByName.set(normalizedName, entry);
 				const nameTokens = normalizedName.split(' ').filter(Boolean);
 				const lastName = nameTokens[nameTokens.length - 1] ?? normalizedName;
 				const current = uploadedByLastName.get(lastName) ?? [];
 				current.push(entry);
 				uploadedByLastName.set(lastName, current);
 			}
+
+			if (normalizedStudentId) {
+				uploadedById.set(normalizedStudentId, entry);
+			}
+
+			if (firstLastKey) {
+				uploadedByFirstLast.set(firstLastKey, entry);
+			}
+		});
+
+		studentIdentityLinks.forEach((link) => {
+			const matchedStudentId = String(link.matchedStudentId ?? '').trim();
+			if (!matchedStudentId) {
+				return;
+			}
+
+			const uploadedStudentName = normalizeStudentToken(link.uploadedStudentName ?? '');
+			if (!uploadedStudentName) {
+				return;
+			}
+
+			const uploadedFirstLastKey = getFirstLastKeyFromFullName(uploadedStudentName);
+			const matchedResult = uploadedFirstLastKey ? uploadedByFirstLast.get(uploadedFirstLastKey) : undefined;
+			if (matchedResult) {
+				uploadedByMatchedStudentId.set(matchedStudentId, matchedResult);
+			}
 		});
 
 		return classStudentsList.map((classStudent) => {
-			const candidates = buildNameCandidates({
-				name: classStudent.name,
-				firstName: classStudent.firstName,
-				lastName: classStudent.lastName
-			});
+			const classStudentId = normalizeStudentIdentifier(String(classStudent.id ?? ''));
+			const classStudentSimpleId = normalizeStudentIdentifier(getSimpleStudentId(String(classStudent.id ?? '')));
+			const classStudentNo = normalizeStudentIdentifier(String(classStudent.studentNo ?? ''));
+			const classStudentFirstLast = getFirstLastKey(classStudent.firstName ?? '', classStudent.lastName ?? '');
 
-			let matchedResult: (typeof studentItemResults)[number] | undefined;
-			for (const candidate of candidates) {
-				const fullNameMatch = uploadedByName.get(candidate);
-				if (fullNameMatch) {
-					matchedResult = fullNameMatch;
-					break;
-				}
-			}
+			let matchedResult: (typeof studentItemResults)[number] | undefined =
+				uploadedByMatchedStudentId.get(classStudent.id)
+				?? (classStudentNo ? uploadedById.get(classStudentNo) : undefined)
+				?? (classStudentSimpleId ? uploadedById.get(classStudentSimpleId) : undefined)
+				?? (classStudentId ? uploadedById.get(classStudentId) : undefined)
+				?? (classStudentFirstLast ? uploadedByFirstLast.get(classStudentFirstLast) : undefined);
 
 			if (!matchedResult) {
 				const normalizedLastName = normalizeStudentToken(classStudent.lastName || '');
@@ -241,7 +342,7 @@ function ItemAnalysis() {
 				}))
 			};
 		});
-	}, [data?.classStudents, data?.studentItemResults]);
+	}, [data?.classStudents, data?.studentItemResults, data?.studentIdentityLinks]);
 
 	const sortedIndividualStudents = useMemo(() => {
 		const students = [...individualStudents];
@@ -275,6 +376,14 @@ function ItemAnalysis() {
 		});
 	}, [individualStudents, selectedIndividualSortBy]);
 
+	useEffect(() => {
+		if (selectedScope !== 'individual' || sortedIndividualStudents.length === 0) {
+			return;
+		}
+
+		setSelectedStudentId(sortedIndividualStudents[0]?.id ?? '');
+	}, [selectedScope, selectedIndividualSortBy, sortedIndividualStudents]);
+
 	const selectedStudent = useMemo(
 		() => sortedIndividualStudents.find((student) => student.id === selectedStudentId) ?? null,
 		[sortedIndividualStudents, selectedStudentId]
@@ -300,17 +409,57 @@ function ItemAnalysis() {
 			return individualRows;
 		}
 
-		if (selectedIndividualResultFilter === 'correct') {
-			return individualRows.filter((row) => row.interpretation === 'Correct');
-		}
-
-		return individualRows.filter((row) => row.interpretation !== 'Correct');
+		return individualRows.filter((row) => normalizeInterpretation(row.interpretation) === selectedIndividualResultFilter);
 	}, [individualRows, selectedIndividualResultFilter]);
+
+	const individualInterpretationFilterOptions = useMemo(() => {
+		const options = new Map<string, string>();
+		individualRows.forEach((row) => {
+			const label = row.interpretation.trim();
+			if (!label) {
+				return;
+			}
+			const value = normalizeInterpretation(label);
+			if (!options.has(value)) {
+				options.set(value, label);
+			}
+		});
+		return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+	}, [individualRows]);
+
+	const itemResultStatsByItemNo = useMemo(() => {
+		const itemStats = new Map<number, { correctCount: number; totalCount: number }>();
+		(data?.studentItemResults ?? []).forEach((studentResult) => {
+			if (!studentResult.itemResults?.length) {
+				return;
+			}
+
+			studentResult.itemResults.forEach((itemResult) => {
+				const itemNo = Number(itemResult.itemNo);
+				if (!Number.isFinite(itemNo)) {
+					return;
+				}
+
+				const current = itemStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+				current.totalCount += 1;
+				if (normalizeInterpretation(itemResult.interpretation) === 'correct') {
+					current.correctCount += 1;
+				}
+				itemStats.set(itemNo, current);
+			});
+		});
+		return itemStats;
+	}, [data?.studentItemResults]);
 
 	const analysisRowByItemNo = useMemo(() => {
 		const map = new Map<number, { difficultyIndex: string | number; discriminationIndex: string | number }>();
 		(data?.rows ?? []).forEach((row) => {
-			map.set(row.itemNo, {
+			const itemNo = Number(row.itemNo);
+			if (!Number.isFinite(itemNo)) {
+				return;
+			}
+
+			map.set(itemNo, {
 				difficultyIndex: row.difficultyIndex,
 				discriminationIndex: row.discriminationIndex
 			});
@@ -342,9 +491,6 @@ function ItemAnalysis() {
 	const handleDeleteAnalysisEntry = (index: number) => {
 		setAnalysisEntries((current) => {
 			const next = current.filter((_, currentIndex) => currentIndex !== index);
-			if (next.length === 0) {
-				return [createAnalysisEntry(1)];
-			}
 			return next.map((entry, entryIndex) => ({ ...entry, itemNumber: entryIndex + 1 }));
 		});
 	};
@@ -355,7 +501,7 @@ function ItemAnalysis() {
 			setError(null);
 
 			try {
-				const response = await getItemAnalysisData(appliedClass, appliedSubject);
+				const response = await getItemAnalysisData(appliedClass, appliedSubject, appliedQuarter);
 				setData(response);
 				const nextClass = response.selectedClass ?? '';
 				const nextSubject = response.selectedSubject ?? '';
@@ -401,22 +547,16 @@ function ItemAnalysis() {
 	useEffect(() => {
 		if (linkedRecord) {
 			setAnalysisEntries(
-				Array.from({ length: Math.max(5, linkedRecord.analysisEntries.length) }, (_, index) => ({
+				linkedRecord.analysisEntries.map((entry, index) => ({
 					itemNumber: index + 1,
-					contentArea: linkedRecord.analysisEntries[index]?.contentArea ?? '',
-					intervention: linkedRecord.analysisEntries[index]?.intervention ?? ''
+					contentArea: entry.contentArea ?? '',
+					intervention: entry.intervention ?? ''
 				}))
 			);
 			return;
 		}
 
-		setAnalysisEntries((current) => {
-			const targetCount = 5;
-			if (current.length === targetCount) {
-				return current;
-			}
-			return Array.from({ length: targetCount }, (_, index) => current[index] ?? createAnalysisEntry(index + 1));
-		});
+		setAnalysisEntries([]);
 	}, [linkedRecord]);
 
 	useEffect(() => {
@@ -436,15 +576,6 @@ function ItemAnalysis() {
 		}
 	}, [selectedScope, sortedIndividualStudents, selectedStudentId]);
 
-	const handleApplyFilters = () => {
-		setAppliedClass(selectedClass);
-		setAppliedSubject(selectedSubject);
-		setAppliedQuarter(selectedQuarter);
-		setSelectedStudentId('');
-		setSelectedIndividualResultFilter('all');
-		setSelectedIndividualSortBy('name');
-	};
-
 	const handleSaveAnalysisEntries = () => {
 		const classToken = appliedClass || selectedClass;
 		const subjectToken = appliedSubject || selectedSubject;
@@ -462,7 +593,13 @@ function ItemAnalysis() {
 			subject: subjectToken,
 			quarter: quarterToken,
 			totalItems: targetAnalysisCount,
-			analysisEntries
+			analysisEntries,
+			itemAnalysisRows: (data?.rows ?? []).map((row) => ({
+				itemNo: Number(row.itemNo) || 0,
+				difficultyIndex: row.difficultyIndex,
+				discriminationIndex: row.discriminationIndex,
+				interpretation: row.interpretation
+			}))
 		});
 		setSavingLinkedAnalysis(false);
 		setLinkedRecordsVersion((value) => value + 1);
@@ -472,15 +609,6 @@ function ItemAnalysis() {
 	const availableEditSubjects = editClass
 		? (uploadMeta?.classSubjectMap?.[editClass] ?? uploadMeta?.subjects ?? [])
 		: (uploadMeta?.subjects ?? []);
-
-	const handleOpenEditModal = () => {
-		setActionMessage(null);
-		setEditClass(appliedClass || selectedClass || data?.selectedClass || '');
-		setEditSubject(appliedSubject || selectedSubject || data?.selectedSubject || '');
-		setEditQuarter(appliedQuarter || selectedQuarter || data?.selectedQuarter || uploadMeta?.quarters?.[0] || '');
-		setEditFile(null);
-		setShowEditModal(true);
-	};
 
 	const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -501,11 +629,12 @@ function ItemAnalysis() {
 
 			const originalClass = appliedClass || data?.selectedClass || '';
 			const originalSubject = appliedSubject || data?.selectedSubject || '';
+			const originalQuarter = appliedQuarter || data?.selectedQuarter || '';
 			const changedIdentity = Boolean(originalClass && originalSubject)
 				&& (originalClass !== editClass || originalSubject !== editSubject);
 
 			if (changedIdentity) {
-				await deleteTeacherItemAnalysis(originalClass, originalSubject);
+				await deleteTeacherItemAnalysis(originalClass, originalSubject, originalQuarter);
 			}
 
 			await submitTeacherItemAnalysis({
@@ -533,6 +662,7 @@ function ItemAnalysis() {
 	const handleDelete = async () => {
 		const classToDelete = appliedClass || data?.selectedClass || '';
 		const subjectToDelete = appliedSubject || data?.selectedSubject || '';
+		const quarterToDelete = appliedQuarter || selectedQuarter || data?.selectedQuarter || '';
 
 		if (!classToDelete || !subjectToDelete) {
 			setActionMessage('Select a class and subject record first.');
@@ -547,7 +677,7 @@ function ItemAnalysis() {
 		try {
 			setDeletingRecord(true);
 			setActionMessage(null);
-			await deleteTeacherItemAnalysis(classToDelete, subjectToDelete);
+			await deleteTeacherItemAnalysis(classToDelete, subjectToDelete, quarterToDelete);
 			setActionMessage('Item analysis deleted successfully.');
 			setAppliedClass('');
 			setAppliedSubject('');
@@ -655,28 +785,50 @@ function ItemAnalysis() {
 
 			<section className="teacher-filter-row">
 				<select value={selectedClass} onChange={(event) => {
-					setSelectedClass(event.target.value);
+					const nextClass = event.target.value;
+					setSelectedClass(nextClass);
+					setAppliedClass(nextClass);
 					setSelectedSubject('');
+					setAppliedSubject('');
 					setSelectedQuarter('');
+					setAppliedQuarter('');
+					setSelectedStudentId('');
+					setSelectedIndividualResultFilter('all');
+					setSelectedIndividualSortBy('name');
 				}}>
 					<option value="">Select Class</option>
 					{availableClassOptions.map((classOption) => (
 						<option key={classOption} value={classOption}>{classOption}</option>
 					))}
 				</select>
-				<select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)} disabled={!selectedClass}>
+				<select value={selectedSubject} onChange={(event) => {
+					const nextSubject = event.target.value;
+					setSelectedSubject(nextSubject);
+					setAppliedSubject(nextSubject);
+					setSelectedQuarter('');
+					setAppliedQuarter('');
+					setSelectedStudentId('');
+					setSelectedIndividualResultFilter('all');
+					setSelectedIndividualSortBy('name');
+				}} disabled={!selectedClass}>
 					<option value="">Select Subject</option>
 					{availableSubjectOptions.map((subjectOption) => (
 						<option key={subjectOption} value={subjectOption}>{subjectOption}</option>
 					))}
 				</select>
-				<select value={selectedQuarter} onChange={(event) => setSelectedQuarter(event.target.value)} disabled={!selectedSubject}>
+				<select value={selectedQuarter} onChange={(event) => {
+					const nextQuarter = event.target.value;
+					setSelectedQuarter(nextQuarter);
+					setAppliedQuarter(nextQuarter);
+					setSelectedStudentId('');
+					setSelectedIndividualResultFilter('all');
+					setSelectedIndividualSortBy('name');
+				}} disabled={!selectedSubject}>
 					<option value="">Select Quarter</option>
 					{availableQuarterOptions.map((quarterOption) => (
 						<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
 					))}
 				</select>
-				<button type="button" className="teacher-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>Apply</button>
 			</section>
 
 			<div className="teacher-stats-row">
@@ -704,14 +856,6 @@ function ItemAnalysis() {
 						<button type="button" className={selectedScope === 'individual' ? 'active' : ''} onClick={() => setSelectedScope('individual')}>Individual</button>
 					</div>
 				</div>
-					<button
-						type="button"
-						className="teacher-item-analysis-create-btn"
-						onClick={() => navigate('/teacher/upload-results')}
-					>
-						<PlusIcon className="teacher-item-analysis-create-icon" />
-						Upload
-					</button>
 				</div>
 			</div>
 
@@ -729,7 +873,10 @@ function ItemAnalysis() {
 							</svg>
 							<select
 								value={selectedIndividualSortBy}
-								onChange={(event) => setSelectedIndividualSortBy(event.target.value as IndividualSortBy)}
+								onChange={(event) => {
+									setSelectedIndividualSortBy(event.target.value as IndividualSortBy);
+									setSelectedStudentId('');
+								}}
 							>
 								<option value="name">Sort by: Name</option>
 								<option value="ranking">Sort by: Ranking</option>
@@ -805,9 +952,9 @@ function ItemAnalysis() {
 								aria-label="Filter item analysis by performance"
 							>
 								<option value="all">All Items</option>
-								<option value="excellent">Excellent</option>
-								<option value="good">Good</option>
-								<option value="needs">Needs Improvement</option>
+								{allInterpretationFilterOptions.map((option) => (
+									<option key={`all-interpretation-${option.value}`} value={option.value}>{option.label}</option>
+								))}
 							</select>
 						) : selectedScope === 'individual' ? (
 							<select
@@ -817,27 +964,20 @@ function ItemAnalysis() {
 								aria-label="Filter selected student item results"
 							>
 								<option value="all">All Items</option>
-								<option value="correct">Correct</option>
-								<option value="incorrect">Incorrect</option>
+								{individualInterpretationFilterOptions.map((option) => (
+									<option key={`individual-interpretation-${option.value}`} value={option.value}>{option.label}</option>
+								))}
 							</select>
 						) : null}
 					</div>
 					<div className="teacher-heading-inline-actions teacher-item-analysis-panel-actions">
 						<button
 							type="button"
-							className="teacher-item-analysis-edit-btn"
-							onClick={handleOpenEditModal}
-							disabled={loading || !data?.selectedClass || !data?.selectedSubject}
+							className="teacher-item-analysis-create-btn teacher-item-analysis-create-btn-inline"
+							onClick={() => navigate('/teacher/upload-results')}
 						>
-							Edit
-						</button>
-						<button
-							type="button"
-							className="teacher-item-analysis-delete-btn"
-							onClick={handleDelete}
-							disabled={loading || deletingRecord || !data?.selectedClass || !data?.selectedSubject}
-						>
-							{deletingRecord ? 'Deleting...' : 'Delete'}
+							<PlusIcon className="teacher-item-analysis-create-icon" />
+							Create
 						</button>
 					</div>
 				</div>
@@ -850,21 +990,30 @@ function ItemAnalysis() {
 							<table className="teacher-table">
 								<thead>
 									<tr>
-										<th>Item No.</th>
-										<th>Difficulty Index</th>
-										<th>Discrimination Index</th>
+										<th>Item #</th>
+										<th>Correct</th>
+										<th>Difficulty</th>
 										<th>Result</th>
+										<th>Interpretation</th>
 									</tr>
 								</thead>
 								<tbody>
 									{filteredIndividualRows.map((row) => {
 										const analysisRow = analysisRowByItemNo.get(row.itemNo);
+										const isCorrect = row.interpretation === 'Correct';
+										const itemResultStats = itemResultStatsByItemNo.get(row.itemNo);
+										const difficultyLabel = getDifficultyLabel(analysisRow?.difficultyIndex ?? '');
 
 										return (
 										<tr key={`individual-row-${selectedStudent?.id}-${row.itemNo}`}>
 											<td>{row.itemNo}</td>
-											<td>{analysisRow?.difficultyIndex ?? '-'}</td>
-											<td>{analysisRow?.discriminationIndex ?? '-'}</td>
+											<td>{isCorrect ? '✓' : '✗'}</td>
+											<td>
+												<span className={`teacher-badge difficulty-${getDifficultyLevel(analysisRow?.difficultyIndex ?? '')}`}>
+													{difficultyLabel}
+												</span>
+											</td>
+											<td>{`${itemResultStats?.correctCount ?? 0}/${itemResultStats?.totalCount ?? 0}`}</td>
 											<td>
 												<span className={`teacher-badge ${row.interpretation === 'Correct' ? 'excellent' : row.interpretation === 'Partially Correct' ? 'fair' : 'poor'}`}>
 													{row.interpretation}
@@ -884,25 +1033,37 @@ function ItemAnalysis() {
 						<table className="teacher-table">
 							<thead>
 								<tr>
-									<th>Item No.</th>
+									<th>Item #</th>
 									<th>Difficulty Index</th>
+									<th>Difficulty</th>
 									<th>Discrimination Index</th>
+									<th>Result</th>
 									<th>Interpretation</th>
 								</tr>
 							</thead>
 							<tbody>
-								{displayedRows.map((row) => (
-									<tr key={`${row.itemNo}-${row.interpretation}`}>
-										<td>{row.itemNo}</td>
-										<td>{row.difficultyIndex}</td>
-										<td>{row.discriminationIndex}</td>
-										<td>
-											<span className={`teacher-badge ${getInterpretationClass(row.interpretation)}`}>
-												{row.interpretation}
-											</span>
-										</td>
-									</tr>
-								))}
+								{displayedRows.map((row) => {
+									const itemNo = Number(row.itemNo);
+									const itemResultStats = Number.isFinite(itemNo) ? itemResultStatsByItemNo.get(itemNo) : null;
+									return (
+										<tr key={`${row.itemNo}-${row.interpretation}`}>
+											<td>{row.itemNo}</td>
+											<td>{row.difficultyIndex}</td>
+											<td>
+												<span className={`teacher-badge difficulty-${getDifficultyLevel(row.difficultyIndex)}`}>
+													{getDifficultyLabel(row.difficultyIndex)}
+												</span>
+											</td>
+											<td>{row.discriminationIndex}</td>
+											<td>{`${itemResultStats?.correctCount ?? 0}/${itemResultStats?.totalCount ?? 0}`}</td>
+											<td>
+												<span className={`teacher-badge ${getInterpretationClass(row.interpretation)}`}>
+													{row.interpretation}
+												</span>
+											</td>
+										</tr>
+									);
+								})}
 							</tbody>
 						</table>
 					</div>
@@ -912,7 +1073,7 @@ function ItemAnalysis() {
 			</section>
 
 			<section className="teacher-panel teacher-item-analysis-linked-panel">
-				<div className="teacher-panel-head">
+				<div className="teacher-panel-head teacher-dash-heading-divider">
 					<h2>Analysis</h2>
 					<span>{(appliedSubject || selectedSubject) || 'Select Subject'} | {(appliedClass || selectedClass) || 'Select Class'} | {(appliedQuarter || selectedQuarter) || 'Select Quarter'}</span>
 				</div>
@@ -927,7 +1088,7 @@ function ItemAnalysis() {
 								<th>Item Number</th>
 								<th>Content Area Gap</th>
 								<th>Intervention</th>
-								<th>Action</th>
+								<th></th>
 							</tr>
 						</thead>
 						<tbody>
@@ -948,9 +1109,9 @@ function ItemAnalysis() {
 											placeholder="Enter intervention plan"
 										/>
 									</td>
-									<td>
-										<button type="button" className="teacher-item-analysis-row-delete-btn" onClick={() => handleDeleteAnalysisEntry(index)}>
-											Delete
+									<td className="teacher-item-analysis-action-cell">
+										<button type="button" className="teacher-item-analysis-delete-icon" onClick={() => handleDeleteAnalysisEntry(index)} aria-label="Delete item">
+											✕
 										</button>
 									</td>
 								</tr>
@@ -959,16 +1120,28 @@ function ItemAnalysis() {
 					</table>
 				</div>
 				<div className="teacher-item-analysis-analysis-actions">
-					<button
-						type="button"
-						className="teacher-filter-apply-btn"
-						onClick={handleSaveAnalysisEntries}
-						disabled={savingLinkedAnalysis}
-					>
-						{savingLinkedAnalysis ? 'Saving...' : 'Save Analysis'}
-					</button>
 				</div>
 			</section>
+
+			<div className="teacher-item-analysis-page-actions">
+				<button
+					type="button"
+					className="teacher-item-analysis-delete-btn"
+					onClick={() => void handleDelete()}
+					disabled={deletingRecord}
+				>
+					{deletingRecord ? 'Deleting...' : 'Delete'}
+				</button>
+				<button
+					type="button"
+					className="teacher-filter-apply-btn"
+					onClick={handleSaveAnalysisEntries}
+					disabled={savingLinkedAnalysis}
+				>
+					{savingLinkedAnalysis ? 'Saving...' : 'Save Analysis'}
+				</button>
+			</div>
+
 		</TeacherLayout>
 	);
 }

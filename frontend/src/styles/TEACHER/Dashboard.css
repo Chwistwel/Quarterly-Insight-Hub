@@ -100,6 +100,11 @@
 	cursor: pointer;
 }
 
+.teacher-menu-item:hover {
+	background: var(--surface-soft);
+	color: var(--text-primary);
+}
+
 .teacher-menu-item-icon {
 	width: 1.35rem;
 	display: inline-flex;
@@ -165,10 +170,10 @@
 .teacher-logout {
 	margin-top: auto;
 	height: 40px;
-	border: 1px solid var(--border-strong);
+	border: 0;
 	border-radius: 11px;
-	background: var(--surface-soft);
-	color: var(--text-primary);
+	background: transparent;
+	color: var(--text-secondary);
 	text-align: left;
 	padding: 0 0.85rem;
 	font-size: 1rem;
@@ -177,6 +182,10 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
+}
+
+.teacher-logout:hover {
+	background: var(--surface-soft);
 }
 
 .layout-logout-icon {
@@ -204,6 +213,12 @@
 	margin: 0;
 	color: var(--brand);
 	font-size: 2rem;
+}
+
+.teacher-dash-heading-divider {
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--border);
+	margin-bottom: 0.35rem;
 }
 
 .teacher-dash-heading span {
@@ -441,6 +456,22 @@
 	gap: 0.75rem;
 }
 
+.teacher-dashboard-content-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+	gap: 0.75rem;
+	align-items: start;
+}
+
+.teacher-dashboard-trend-panel .teacher-line-chart svg {
+	height: 180px;
+}
+
+.teacher-dashboard-side-panels {
+	display: grid;
+	gap: 0.75rem;
+}
+
 .teacher-highlight-list li > div {
 	display: grid;
 	gap: 0.15rem;
@@ -593,6 +624,10 @@
 	}
 
 	.upload-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.teacher-dashboard-content-grid {
 		grid-template-columns: 1fr;
 	}
 }

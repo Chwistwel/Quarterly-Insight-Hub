@@ -37,11 +37,6 @@ function Dashboard() {
 		void load();
 	}, [appliedGrade, appliedQuarter]);
 
-	const handleApplyFilters = () => {
-		setAppliedGrade(selectedGrade);
-		setAppliedQuarter(selectedQuarter);
-	};
-
 	const peakTrend = useMemo(() => {
 		if (!data?.trend?.length) {
 			return null;
@@ -73,7 +68,7 @@ function Dashboard() {
 
 	return (
 		<TeacherLayout title={data?.title ?? 'Dashboard'}>
-			<section className="teacher-dash-heading">
+			<section className="teacher-dash-heading teacher-dash-heading-divider">
 				<p>{data?.systemLabel ?? 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM'}</p>
 				<div>
 					<h2>{data?.title ?? 'Dashboard'}</h2>
@@ -81,19 +76,26 @@ function Dashboard() {
 			</section>
 
 			<section className="teacher-filter-row">
-				<select value={selectedGrade} onChange={(event) => setSelectedGrade(event.target.value)}>
+				<select value={selectedGrade} onChange={(event) => {
+					const nextGrade = event.target.value;
+					setSelectedGrade(nextGrade);
+					setAppliedGrade(nextGrade);
+				}}>
 					<option value="">All Grades</option>
 					{(data?.filters?.grades ?? []).map((grade) => (
 						<option key={grade} value={grade}>{grade}</option>
 					))}
 				</select>
-				<select value={selectedQuarter} onChange={(event) => setSelectedQuarter(event.target.value)}>
+				<select value={selectedQuarter} onChange={(event) => {
+					const nextQuarter = event.target.value;
+					setSelectedQuarter(nextQuarter);
+					setAppliedQuarter(nextQuarter);
+				}}>
 					<option value="">All Quarters</option>
 					{(data?.filters?.quarters ?? []).map((quarter) => (
 						<option key={quarter} value={quarter}>{quarter}</option>
 					))}
 				</select>
-				<button type="button" className="teacher-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>Apply</button>
 			</section>
 
 			{loading ? <p className="teacher-status">Loading dashboard...</p> : null}
@@ -113,30 +115,31 @@ function Dashboard() {
 				)}
 			</div>
 
-			<section className="teacher-panel">
-				<div className="teacher-panel-head">
-					<h2>Class Performance Trend</h2>
-					{peakTrend ? <span>Peak: {peakTrend}</span> : null}
-				</div>
-				{data?.trend?.length && trendPoints ? (
-					<div className="teacher-line-chart" aria-label="Performance trend chart">
-						<svg viewBox="0 0 760 220" preserveAspectRatio="none">
-							<polyline points={trendPoints} />
-						</svg>
-						<div className="teacher-line-labels">
-							{data.trend.map((point) => (
-								<span key={point.label}>{point.label}</span>
-							))}
-						</div>
+			<div className="teacher-dashboard-content-grid">
+				<section className="teacher-panel teacher-dashboard-trend-panel">
+					<div className="teacher-panel-head">
+						<h2>Class Performance Trend</h2>
+						{peakTrend ? <span>Peak: {peakTrend}</span> : null}
 					</div>
-				) : (
-					<p className="teacher-status">No trend data available.</p>
-				)}
-				{data?.trendSubtitle ? <p className="teacher-panel-copy">{data.trendSubtitle}</p> : null}
-			</section>
+					{data?.trend?.length && trendPoints ? (
+						<div className="teacher-line-chart" aria-label="Performance trend chart">
+							<svg viewBox="0 0 760 220" preserveAspectRatio="none">
+								<polyline points={trendPoints} />
+							</svg>
+							<div className="teacher-line-labels">
+								{data.trend.map((point) => (
+									<span key={point.label}>{point.label}</span>
+								))}
+							</div>
+						</div>
+					) : (
+						<p className="teacher-status">No trend data available.</p>
+					)}
+					{data?.trendSubtitle ? <p className="teacher-panel-copy">{data.trendSubtitle}</p> : null}
+				</section>
 
-			<div className="teacher-bottom-grid">
-				<section className="teacher-panel">
+				<div className="teacher-dashboard-side-panels">
+					<section className="teacher-panel">
 					<h2>Top Performing Students</h2>
 					{data?.topStudents?.length ? (
 						<ul className="teacher-highlight-list">
@@ -153,28 +156,29 @@ function Dashboard() {
 					) : (
 						<p className="teacher-status">No student performance records yet.</p>
 					)}
-				</section>
+					</section>
 
-				<section className="teacher-panel">
-					<h2>Areas for Improvement</h2>
-					{data?.improvementAreas?.length ? (
-						<ul className="teacher-progress-list">
-							{data.improvementAreas.map((item) => (
-								<li key={item.area}>
-									<div>
-										<span>{item.area}</span>
-										<strong>{item.value}</strong>
-									</div>
-									<div className="teacher-progress-track">
-										<div className="teacher-progress-fill" style={{ width: typeof item.value === 'number' ? `${Math.min(100, Math.max(0, item.value))}%` : item.value.toString() }} />
-									</div>
-								</li>
-							))}
-						</ul>
-					) : (
-						<p className="teacher-status">No improvement metrics yet.</p>
-					)}
-				</section>
+					<section className="teacher-panel">
+						<h2>Areas for Improvement</h2>
+						{data?.improvementAreas?.length ? (
+							<ul className="teacher-progress-list">
+								{data.improvementAreas.map((item) => (
+									<li key={item.area}>
+										<div>
+											<span>{item.area}</span>
+											<strong>{item.value}</strong>
+										</div>
+										<div className="teacher-progress-track">
+											<div className="teacher-progress-fill" style={{ width: typeof item.value === 'number' ? `${Math.min(100, Math.max(0, item.value))}%` : item.value.toString() }} />
+										</div>
+									</li>
+								))}
+							</ul>
+						) : (
+							<p className="teacher-status">No improvement metrics yet.</p>
+						)}
+					</section>
+				</div>
 			</div>
 
 		</TeacherLayout>

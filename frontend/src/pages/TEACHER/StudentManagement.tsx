@@ -4,16 +4,40 @@ import TeacherLayout from './TeacherLayout';
 import {
 	addStudentToClass,
 	deleteStudentRecord,
+	getItemAnalysisData,
 	getMyClassesData,
+	getTeacherTosBlueprint,
 	getStudentManagementData,
 	uploadStudentClassList,
 	updateStudentRecord,
+	type ItemAnalysisResponse,
+	type TosBlueprintRecord,
 	type StudentManagementResponse,
 	type StudentRecord,
 	type TeacherClassSummary
 } from '../../services/teacherPortalApi';
 import { CloseIcon, EditIcon, TrashIcon } from '../../components/icons';
 import '../../styles/TEACHER/StudentManagement.css';
+
+type StudentCardView = 'students' | 'analysis';
+type StudentSortBy = 'name' | 'ranking' | 'score';
+
+const ANALYSIS_QUARTERS = ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'];
+
+function getCurrentSchoolYear(): string {
+	const currentYear = new Date().getFullYear();
+	const startYear = new Date().getMonth() >= 6 ? currentYear : currentYear - 1;
+	return `${startYear}-${startYear + 1}`;
+}
+
+function getSimpleStudentId(studentId: string): string {
+	const normalized = String(studentId ?? '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+	if (!normalized) {
+		return '-';
+	}
+
+	return `SID-${normalized.slice(-6)}`;
+}
 
 function StudentManagement() {
 	const [searchParams] = useSearchParams();
@@ -47,6 +71,15 @@ function StudentManagement() {
 	const [editQ2, setEditQ2] = useState('0');
 	const [editQ3, setEditQ3] = useState('0');
 	const [editQ4, setEditQ4] = useState('0');
+	const [selectedStudentCardView, setSelectedStudentCardView] = useState<StudentCardView>('students');
+	const [studentSortBy, setStudentSortBy] = useState<StudentSortBy>('name');
+	const [selectedAnalysisQuarter, setSelectedAnalysisQuarter] = useState('Quarter 1');
+	const [studentEditMode, setStudentEditMode] = useState(false);
+	const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+	const [analysisLoading, setAnalysisLoading] = useState(false);
+	const [analysisError, setAnalysisError] = useState<string | null>(null);
+	const [itemAnalysisData, setItemAnalysisData] = useState<ItemAnalysisResponse | null>(null);
+	const [tosBlueprint, setTosBlueprint] = useState<TosBlueprintRecord | null>(null);
 	const activeClass = useMemo(() => classOptions.find((classItem) => classItem.id === classId), [classOptions, classId]);
 
 	const loadData = async () => {
@@ -80,6 +113,45 @@ function StudentManagement() {
 	useEffect(() => {
 		void loadClassOptions();
 	}, []);
+
+	useEffect(() => {
+		const loadAnalysisData = async () => {
+			if (!activeClass) {
+				setItemAnalysisData(null);
+				setTosBlueprint(null);
+				setAnalysisError(null);
+				return;
+			}
+
+			setAnalysisLoading(true);
+			setAnalysisError(null);
+
+			try {
+				const schoolYear = getCurrentSchoolYear();
+				const classValue = `${activeClass.grade} - ${activeClass.section}`;
+				const [analysisResponse, tosResponse] = await Promise.all([
+					getItemAnalysisData(classValue, activeClass.subject, selectedAnalysisQuarter),
+					getTeacherTosBlueprint({
+						schoolYear,
+						classValue,
+						subject: activeClass.subject,
+						quarter: selectedAnalysisQuarter
+					})
+				]);
+
+				setItemAnalysisData(analysisResponse);
+				setTosBlueprint(tosResponse);
+			} catch (loadError) {
+				setItemAnalysisData(null);
+				setTosBlueprint(null);
+				setAnalysisError(loadError instanceof Error ? loadError.message : 'Unable to load analysis data.');
+			} finally {
+				setAnalysisLoading(false);
+			}
+		};
+
+		void loadAnalysisData();
+	}, [activeClass, selectedAnalysisQuarter]);
 
 	const openAddModal = () => {
 		setActionMessage(null);
@@ -314,7 +386,7 @@ function StudentManagement() {
 		}
 	};
 
-	const rankedStudents = useMemo(() => {
+	const sortedStudents = useMemo(() => {
 		const students = [...(data?.students ?? [])];
 
 		const extractSortableName = (student: StudentRecord): { lastName: string; firstName: string; middleInitial: string; fullName: string } => {
@@ -327,7 +399,7 @@ function StudentManagement() {
 			};
 		};
 
-		const byName = students.sort((first, second) => {
+		const compareByName = (first: StudentRecord, second: StudentRecord) => {
 			const firstName = extractSortableName(first);
 			const secondName = extractSortableName(second);
 
@@ -335,19 +407,104 @@ function StudentManagement() {
 				|| firstName.firstName.localeCompare(secondName.firstName)
 				|| firstName.middleInitial.localeCompare(secondName.middleInitial)
 				|| firstName.fullName.localeCompare(secondName.fullName);
+		};
+
+		const compareByRanking = (first: StudentRecord, second: StudentRecord) => (first.ranking ?? 0) - (second.ranking ?? 0);
+		const compareByScore = (first: StudentRecord, second: StudentRecord) => {
+			const firstScore = Number.parseFloat(String(first.average ?? '0')) || 0;
+			const secondScore = Number.parseFloat(String(second.average ?? '0')) || 0;
+			return secondScore - firstScore;
+		};
+
+		const sorted = [...students].sort((first, second) => {
+			switch (studentSortBy) {
+				case 'ranking':
+					return compareByRanking(first, second) || compareByName(first, second);
+				case 'score':
+					return compareByScore(first, second) || compareByName(first, second);
+				case 'name':
+				default:
+					return compareByName(first, second);
+			}
 		});
 
-		return byName.map((student, index) => {
+		return sorted.map((student, index) => {
 			const parts = getNameParts(student);
+			const persistedStudentNo = String(student.studentNo ?? '').trim();
 			return {
 				...student,
 				studentNumberDisplay: String(index + 1).padStart(2, '0'),
+				studentSimpleId: persistedStudentNo || getSimpleStudentId(student.id),
 				firstNameDisplay: parts.firstName || student.firstName || '-',
 				lastNameDisplay: parts.lastName || student.lastName || '-',
 				ranking: Number.isFinite(student.ranking) ? Number(student.ranking) : 0
 			};
 		});
-	}, [data?.students]);
+	}, [data?.students, studentSortBy]);
+
+	const allStudentsSelected = sortedStudents.length > 0 && selectedStudentIds.length === sortedStudents.length;
+
+	const handleToggleStudentSelection = (studentId: string) => {
+		setSelectedStudentIds((previous) => (
+			previous.includes(studentId)
+				? previous.filter((id) => id !== studentId)
+				: [...previous, studentId]
+		));
+	};
+
+	const handleSelectAllStudents = () => {
+		setSelectedStudentIds((previous) => (
+			previous.length === sortedStudents.length
+				? []
+				: sortedStudents.map((student) => student.id)
+		));
+	};
+
+	const handleEnterEditMode = () => {
+		setActionMessage(null);
+		setStudentEditMode(true);
+	};
+
+	const handleCancelEditMode = () => {
+		setSelectedStudentIds([]);
+		setStudentEditMode(false);
+	};
+
+	const handleDeleteSelectedStudents = async () => {
+		setActionMessage(null);
+
+		if (selectedStudentIds.length === 0) {
+			setActionMessage('Select at least one student to delete.');
+			return;
+		}
+
+		const confirmed = window.confirm(`Delete ${selectedStudentIds.length} selected student record(s)? This action cannot be undone.`);
+		if (!confirmed) {
+			return;
+		}
+
+		try {
+			setDeletingStudent(true);
+			const results = await Promise.allSettled(selectedStudentIds.map((studentId) => deleteStudentRecord(studentId)));
+
+			const deletedCount = results.filter((result) => result.status === 'fulfilled').length;
+			const failedCount = results.length - deletedCount;
+
+			if (failedCount > 0) {
+				setActionMessage(`Deleted ${deletedCount} student(s). ${failedCount} could not be deleted.`);
+			} else {
+				setActionMessage(`${deletedCount} student(s) deleted successfully.`);
+			}
+
+			setSelectedStudentIds([]);
+			setStudentEditMode(false);
+			await loadData();
+		} catch (deleteError) {
+			setActionMessage(deleteError instanceof Error ? deleteError.message : 'Unable to delete selected students.');
+		} finally {
+			setDeletingStudent(false);
+		}
+	};
 
 	return (
 		<TeacherLayout title={data?.title ?? 'Student Management'}>
@@ -543,38 +700,220 @@ function StudentManagement() {
 			{loading ? <p className="teacher-status">Loading students...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
 
-			<section className="teacher-panel student-table-panel">
-				<h2>{`All Students (${rankedStudents.length})`}</h2>
-				<div className="teacher-table-wrap">
-					<table className="teacher-table student-table">
-						<thead>
-							<tr>
-								<th>Student No.</th>
-								<th>Last Name</th>
-								<th>First Name</th>
-								<th>Gender</th>
-								<th>Ranking</th>
-								<th>Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{rankedStudents.map((student) => (
-								<tr key={student.id}>
-									<td>{student.studentNumberDisplay}</td>
-									<td>{student.lastNameDisplay}</td>
-									<td>{student.firstNameDisplay}</td>
-									<td>{student.gender || '-'}</td>
-									<td className="student-average-cell">{student.ranking}</td>
-									<td>
-										<div className="student-actions">
-											<button type="button" aria-label="Edit student" onClick={() => openEditModal(student)}><EditIcon className="ui-inline-icon" /></button>
-										</div>
-									</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
+			<div className="student-view-toggle-wrap">
+				<div className="student-panel-toggle" role="tablist" aria-label="Student card views">
+					<button
+						type="button"
+						className={selectedStudentCardView === 'students' ? 'active' : ''}
+						onClick={() => setSelectedStudentCardView('students')}
+						role="tab"
+						aria-selected={selectedStudentCardView === 'students'}
+					>
+						All Students
+					</button>
+					<button
+						type="button"
+						className={selectedStudentCardView === 'analysis' ? 'active' : ''}
+						onClick={() => setSelectedStudentCardView('analysis')}
+						role="tab"
+						aria-selected={selectedStudentCardView === 'analysis'}
+					>
+						Analysis
+					</button>
 				</div>
+			</div>
+
+			<section className="teacher-panel student-table-panel">
+				<div className="teacher-panel-head student-panel-head">
+					<div className="student-panel-title-group">
+						<h2>{`All Students (${sortedStudents.length})`}</h2>
+					</div>
+					<div className="student-panel-controls">
+						{selectedStudentCardView === 'students' ? (
+							<div className="student-panel-student-controls">
+								{studentEditMode ? (
+									<div className="student-bulk-actions" role="group" aria-label="Bulk student actions">
+										<button type="button" className="student-cancel-btn" onClick={handleCancelEditMode} disabled={deletingStudent}>
+											Cancel
+										</button>
+										<button
+											type="button"
+											className="student-delete-btn"
+											onClick={handleDeleteSelectedStudents}
+											disabled={deletingStudent || selectedStudentIds.length === 0}
+										>
+											<TrashIcon className="ui-inline-icon" />
+											{deletingStudent ? 'Deleting...' : `Delete (${selectedStudentIds.length})`}
+										</button>
+									</div>
+								) : (
+									<button
+										type="button"
+										className="student-edit-mode-btn"
+										onClick={handleEnterEditMode}
+										aria-label="Edit student information and select students"
+									>
+										<EditIcon className="ui-inline-icon" />
+									</button>
+								)}
+
+								<label className="teacher-sort-control" aria-label="Sort students">
+									<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+										<path d="M4 6h12" />
+										<path d="M4 12h8" />
+										<path d="M4 18h14" />
+										<path d="M18 8l2-2 2 2" />
+										<path d="M20 6v12" />
+									</svg>
+									<select value={studentSortBy} onChange={(event) => setStudentSortBy(event.target.value as StudentSortBy)}>
+										<option value="name">Sort by: Name</option>
+										<option value="ranking">Sort by: Ranking</option>
+										<option value="score">Sort by: Score</option>
+									</select>
+								</label>
+							</div>
+						) : (
+							<label className="teacher-sort-control" aria-label="Select analysis quarter">
+								<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M4 6h12" />
+									<path d="M4 12h8" />
+									<path d="M4 18h14" />
+									<path d="M18 8l2-2 2 2" />
+									<path d="M20 6v12" />
+								</svg>
+								<select value={selectedAnalysisQuarter} onChange={(event) => setSelectedAnalysisQuarter(event.target.value)}>
+									{ANALYSIS_QUARTERS.map((quarter) => (
+										<option key={quarter} value={quarter}>{quarter}</option>
+									))}
+								</select>
+							</label>
+						)}
+					</div>
+				</div>
+
+				{selectedStudentCardView === 'students' ? (
+					<div className="teacher-table-wrap">
+						<table className="teacher-table student-table">
+							<thead>
+								<tr>
+									{studentEditMode ? <th className="student-select-header"><input type="checkbox" checked={allStudentsSelected} onChange={handleSelectAllStudents} aria-label="Select all students" /></th> : null}
+									<th aria-label="Student No."></th>
+									<th>Student ID</th>
+									<th>Last Name</th>
+									<th>First Name</th>
+									<th>Gender</th>
+									<th>Ranking</th>
+									{studentEditMode ? <th>Actions</th> : null}
+								</tr>
+							</thead>
+							<tbody>
+								{sortedStudents.map((student) => (
+									<tr key={student.id}>
+										{studentEditMode ? (
+											<td className="student-select-cell">
+												<input
+													type="checkbox"
+													checked={selectedStudentIds.includes(student.id)}
+													onChange={() => handleToggleStudentSelection(student.id)}
+													aria-label={`Select ${student.firstNameDisplay} ${student.lastNameDisplay}`}
+												/>
+											</td>
+										) : null}
+										<td>{student.studentNumberDisplay}</td>
+										<td>{student.studentSimpleId}</td>
+										<td>{student.lastNameDisplay}</td>
+										<td>{student.firstNameDisplay}</td>
+										<td>{student.gender || '-'}</td>
+										<td className="student-average-cell">{student.ranking}</td>
+										{studentEditMode ? (
+											<td>
+												<button type="button" className="student-edit-info-btn" onClick={() => openEditModal(student)}>
+													Edit Info
+												</button>
+											</td>
+										) : null}
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<div className="student-analysis-stack">
+						{analysisLoading ? <p className="teacher-status">Loading analysis for {selectedAnalysisQuarter}...</p> : null}
+						{analysisError ? <p className="teacher-status teacher-status-error">{analysisError}</p> : null}
+						{activeClass ? (
+							<>
+								<section className="student-analysis-card">
+									<div className="student-analysis-card-head">
+										<h3>Uploaded Analysis</h3>
+										<span>{selectedAnalysisQuarter}</span>
+									</div>
+									{itemAnalysisData?.rows?.length ? (
+										<div className="teacher-table-wrap student-analysis-table-wrap">
+											<table className="teacher-table student-analysis-table">
+												<thead>
+													<tr>
+														<th>Item No.</th>
+														<th>Difficulty Index</th>
+														<th>Discrimination Index</th>
+														<th>Interpretation</th>
+													</tr>
+												</thead>
+												<tbody>
+													{itemAnalysisData.rows.map((row) => (
+														<tr key={`student-analysis-${selectedAnalysisQuarter}-${row.itemNo}`}>
+															<td>{row.itemNo}</td>
+															<td>{row.difficultyIndex}</td>
+															<td>{row.discriminationIndex}</td>
+															<td>{row.interpretation}</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									) : (
+										<p className="teacher-status">No uploaded analysis found for {selectedAnalysisQuarter}.</p>
+									)}
+								</section>
+
+								<section className="student-analysis-card">
+									<div className="student-analysis-card-head">
+										<h3>Saved TOS</h3>
+										<span>{selectedAnalysisQuarter}</span>
+									</div>
+									{tosBlueprint ? (
+										<div className="teacher-table-wrap student-analysis-table-wrap">
+											<table className="teacher-table student-analysis-table">
+												<thead>
+													<tr>
+														<th>Objective</th>
+														<th>Competency</th>
+														<th>Days</th>
+														<th>%</th>
+													</tr>
+												</thead>
+												<tbody>
+													{tosBlueprint.rows.map((row) => (
+														<tr key={`student-tos-${selectedAnalysisQuarter}-${row.id}`}>
+															<td>Objective {row.id}</td>
+															<td>{row.competency}</td>
+															<td>{row.days}</td>
+															<td>{row.percentage}</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									) : (
+										<p className="teacher-status">No saved TOS found for {selectedAnalysisQuarter}.</p>
+									)}
+								</section>
+							</>
+						) : (
+							<p className="teacher-status">Select a class to view its analysis and TOS content.</p>
+						)}
+					</div>
+				)}
 			</section>
 		</TeacherLayout>
 	);

@@ -4,6 +4,13 @@ export type TosAnalysisEntry = {
 	intervention: string;
 };
 
+export type LinkedItemAnalysisRow = {
+	itemNo: number;
+	difficultyIndex: number | string;
+	discriminationIndex: number | string;
+	interpretation: string;
+};
+
 export type LinkedTosRecord = {
 	id: string;
 	schoolYear: string;
@@ -13,6 +20,7 @@ export type LinkedTosRecord = {
 	totalItems: number;
 	updatedAt: string;
 	analysisEntries: TosAnalysisEntry[];
+	itemAnalysisRows: LinkedItemAnalysisRow[];
 };
 
 const LINKED_TOS_STORAGE_KEY = 'teacher-tos-linked-records';
@@ -42,7 +50,10 @@ export function getLinkedTosRecords(): LinkedTosRecord[] {
 			.map((record) => ({
 				...record,
 				id: buildRecordId(record.classValue, record.subject, record.quarter),
-				analysisEntries: Array.isArray(record.analysisEntries) ? record.analysisEntries : []
+				analysisEntries: Array.isArray(record.analysisEntries) ? record.analysisEntries : [],
+				itemAnalysisRows: Array.isArray((record as Partial<LinkedTosRecord>).itemAnalysisRows)
+					? ((record as Partial<LinkedTosRecord>).itemAnalysisRows as LinkedItemAnalysisRow[])
+					: []
 			}));
 	} catch {
 		return [];
@@ -73,4 +84,16 @@ export function upsertLinkedTosRecord(record: Omit<LinkedTosRecord, 'id' | 'upda
 export function findLinkedTosRecord(classValue: string, subject: string, quarter: string): LinkedTosRecord | null {
 	const targetId = buildRecordId(classValue, subject, quarter);
 	return getLinkedTosRecords().find((record) => record.id === targetId) ?? null;
+}
+
+export function deleteLinkedTosRecord(recordId: string): boolean {
+	const current = getLinkedTosRecords();
+	const next = current.filter((record) => record.id !== recordId);
+
+	if (next.length === current.length) {
+		return false;
+	}
+
+	localStorage.setItem(LINKED_TOS_STORAGE_KEY, JSON.stringify(next));
+	return true;
 }

@@ -402,7 +402,7 @@ function MyReports() {
 
 		try {
 			const [analysisPayload, studentsPayload] = await Promise.all([
-				getItemAnalysisData(selectedClass, selectedSubject),
+				getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
 				getStudentManagementData()
 			]);
 
@@ -477,7 +477,7 @@ function MyReports() {
 				const [reportsPayload, uploadMetaPayload, analysisPayload, studentsPayload] = await Promise.all([
 					getReportsData(),
 					getUploadMetaData(),
-					getItemAnalysisData(),
+					getItemAnalysisData(undefined, undefined, selectedQuarter),
 					getStudentManagementData()
 				]);
 
@@ -585,18 +585,6 @@ function MyReports() {
 			</div>
 
 			<section className="teacher-panel printable-report-sheet print-only" aria-label="Printable report layout">
-				<header className="print-report-header">
-					<div className="print-report-logo">KES</div>
-					<div className="print-report-header-copy">
-						<p>Department of Education - Region III</p>
-						<p>Division of Olongapo</p>
-						<p>KALALAKE ELEMENTARY SCHOOL</p>
-						<h3>Item Analysis in the selected class and subject</h3>
-						<strong>{resolvedClass || 'Class'} | {resolvedSubject || 'Subject'} | SY {selectedLinkedRecord?.schoolYear || 'N/A'}</strong>
-					</div>
-					<div className="print-report-logo">DepEd</div>
-				</header>
-
 				<div className="print-report-summary-grid">
 					<div>
 						<p>Total students</p>

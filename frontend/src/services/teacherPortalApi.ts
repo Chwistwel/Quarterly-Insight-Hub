@@ -144,6 +144,7 @@ export type TeacherClassSummary = {
 
 export type StudentRecord = {
 	id: string;
+	studentNo?: string;
 	name: string;
 	firstName?: string;
 	middleInitial?: string;
@@ -260,7 +261,7 @@ export async function getDashboardData(selectedGrade?: string, selectedQuarter?:
 	}
 }
 
-export async function getItemAnalysisData(selectedClass?: string, selectedSubject?: string): Promise<ItemAnalysisResponse> {
+export async function getItemAnalysisData(selectedClass?: string, selectedSubject?: string, selectedQuarter?: string): Promise<ItemAnalysisResponse> {
 	try {
 		const params = new URLSearchParams();
 		if (selectedClass) {
@@ -268,6 +269,9 @@ export async function getItemAnalysisData(selectedClass?: string, selectedSubjec
 		}
 		if (selectedSubject) {
 			params.set('subject', selectedSubject);
+		}
+		if (selectedQuarter) {
+			params.set('quarter', selectedQuarter);
 		}
 
 		const query = params.toString();
@@ -322,8 +326,11 @@ export async function submitTeacherItemAnalysis(payload: {
 	}
 }
 
-export async function deleteTeacherItemAnalysis(classValue: string, subject: string): Promise<void> {
+export async function deleteTeacherItemAnalysis(classValue: string, subject: string, quarter?: string): Promise<void> {
 	const params = new URLSearchParams({ class: classValue, subject });
+	if (quarter) {
+		params.set('quarter', quarter);
+	}
 	await fetchJson<{ message: string }>(`/teacher/item-analysis?${params.toString()}`, {
 		method: 'DELETE',
 		headers: getTeacherAuthHeaders()

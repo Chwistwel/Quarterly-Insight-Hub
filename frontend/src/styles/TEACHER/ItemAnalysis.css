@@ -58,6 +58,13 @@
 	height: 1rem;
 }
 
+.teacher-item-analysis-create-btn-inline {
+	height: 34px;
+	padding: 0 0.9rem;
+	font-size: 0.8rem;
+	box-shadow: none;
+}
+
 .teacher-item-analysis-edit-btn,
 .teacher-item-analysis-delete-btn {
 	height: 34px;
@@ -307,8 +314,16 @@
 	justify-content: flex-end;
 }
 
+.teacher-item-analysis-page-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.55rem;
+	margin-top: 0.75rem;
+}
+
 .teacher-item-analysis-analysis-actions-left {
 	justify-content: flex-start;
+	width: 100%;
 }
 
 .teacher-secondary-btn {
@@ -333,6 +348,35 @@
 	font-size: 0.78rem;
 	font-weight: 700;
 	cursor: pointer;
+}
+
+.teacher-item-analysis-action-cell {
+	text-align: right;
+	padding-right: 0.75rem !important;
+}
+
+.teacher-item-analysis-delete-icon {
+	width: 28px;
+	height: 28px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: #e74c3c;
+	font-size: 1.2rem;
+	line-height: 1;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: background-color 0.2s ease;
+}
+
+.teacher-item-analysis-delete-icon:hover {
+	background-color: #fff3f3;
+}
+
+.teacher-item-analysis-delete-icon:active {
+	background-color: #ffe5e5;
 }
 
 .teacher-badge {
@@ -365,6 +409,26 @@
 }
 
 .teacher-badge.neutral {
+	background: var(--surface-soft);
+	color: var(--text-secondary);
+}
+
+.teacher-badge.difficulty-easy {
+	background: #e7f8eb;
+	color: #198754;
+}
+
+.teacher-badge.difficulty-moderate {
+	background: #fff6df;
+	color: #b1841d;
+}
+
+.teacher-badge.difficulty-difficult {
+	background: #ffe9e9;
+	color: #c43d3d;
+}
+
+.teacher-badge.difficulty-unknown {
 	background: var(--surface-soft);
 	color: var(--text-secondary);
 }
@@ -500,4 +564,213 @@
 	font-size: 0.78rem;
 	color: var(--text-secondary);
 	font-weight: 600;
+}
+
+.teacher-item-analysis-history-panel {
+	display: grid;
+	gap: 0.8rem;
+}
+
+.teacher-item-analysis-history-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 0.75rem;
+}
+
+.teacher-item-analysis-history-item {
+	display: grid;
+	gap: 0.35rem;
+	padding: 0.85rem 0.9rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 14px;
+	background: var(--surface-soft);
+	cursor: pointer;
+	transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+
+.teacher-item-analysis-history-item:hover {
+	transform: translateY(-1px);
+	border-color: var(--brand);
+}
+
+.teacher-item-analysis-history-item.active {
+	border-color: var(--brand);
+	background: color-mix(in srgb, var(--surface-soft) 68%, #dce4ff 32%);
+}
+
+.teacher-item-analysis-history-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.teacher-item-analysis-history-head strong {
+	color: var(--brand);
+	font-size: 0.92rem;
+}
+
+.teacher-item-analysis-history-head span,
+.teacher-item-analysis-history-item p {
+	margin: 0;
+	font-size: 0.8rem;
+	line-height: 1.35;
+	color: var(--text-secondary);
+}
+
+.teacher-item-analysis-history-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.teacher-item-analysis-history-icon-btn {
+	width: 30px;
+	height: 30px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--brand);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.teacher-item-analysis-history-icon-btn.danger {
+	color: #c43d3d;
+	border-color: #e8b3b3;
+	background: #fff3f3;
+}
+
+.teacher-item-analysis-history-icon {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.teacher-item-analysis-history-detail {
+	display: grid;
+	gap: 0.7rem;
+	padding-top: 0.25rem;
+	border-top: 1px solid var(--border);
+}
+
+.teacher-item-analysis-history-detail-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.teacher-item-analysis-history-detail-head h3 {
+	margin: 0;
+	font-size: 1rem;
+	color: var(--brand);
+}
+
+.teacher-item-analysis-history-detail-head p {
+	margin: 0.2rem 0 0;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+}
+
+.teacher-item-analysis-history-detail h4 {
+	margin: 0 0 0.45rem;
+	font-size: 0.92rem;
+	color: var(--brand);
+}
+
+.teacher-item-analysis-history-table-wrap {
+	overflow-x: auto;
+}
+
+.teacher-item-analysis-history-table {
+	min-width: 560px;
+}
+
+.teacher-modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(25, 35, 75, 0.35);
+	display: grid;
+	place-items: center;
+	padding: 1rem;
+	z-index: 100;
+}
+
+.teacher-modal {
+	width: min(800px, 100%);
+	max-height: 90vh;
+	overflow-y: auto;
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	background: var(--surface);
+	box-shadow: 0 20px 40px rgba(25, 35, 75, 0.15);
+}
+
+.teacher-modal-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--surface-soft);
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+.teacher-modal-head div {
+	flex: 1;
+}
+
+.teacher-modal-head h3 {
+	margin: 0 0 0.2rem;
+	font-size: 1.15rem;
+	color: var(--brand);
+}
+
+.teacher-modal-head p {
+	margin: 0;
+	font-size: 0.88rem;
+	color: var(--text-secondary);
+}
+
+.teacher-modal-close-btn {
+	width: 36px;
+	height: 36px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--brand);
+	font-size: 1.3rem;
+	line-height: 1;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	transition: all 0.15s ease;
+}
+
+.teacher-modal-close-btn:hover {
+	background: var(--surface-soft);
+	border-color: var(--brand);
+}
+
+.teacher-modal-body {
+	padding: 1.25rem;
+	display: grid;
+	gap: 1.2rem;
+}
+
+.teacher-modal-body > span {
+	font-size: 0.84rem;
+	color: var(--text-secondary);
+}
+
+.teacher-item-analysis-history-modal {
+	width: min(900px, 100%);
 }

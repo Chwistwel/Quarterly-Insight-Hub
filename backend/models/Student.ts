@@ -15,6 +15,12 @@ const studentSchema = new mongoose.Schema(
             lowercase: true,
             index: true
         },
+        studentNo: {
+            type: String,
+            default: '',
+            trim: true,
+            index: true
+        },
         name: {
             type: String,
             required: true,

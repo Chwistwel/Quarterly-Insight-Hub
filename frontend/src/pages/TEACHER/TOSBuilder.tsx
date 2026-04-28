@@ -168,6 +168,21 @@ function TOSBuilder() {
 	const [savingTos, setSavingTos] = useState(false);
 	const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 	const [deletingHistoryId, setDeletingHistoryId] = useState<string>('');
+	const [historySortBy, setHistorySortBy] = useState<'date' | 'subject' | 'class'>('date');
+
+	const sortedHistory = useMemo(() => {
+		const sorted = [...savedHistory];
+		switch (historySortBy) {
+			case 'date':
+				return sorted.sort((first, second) => new Date(second.savedAt).getTime() - new Date(first.savedAt).getTime());
+			case 'subject':
+				return sorted.sort((first, second) => first.subject.localeCompare(second.subject));
+			case 'class':
+				return sorted.sort((first, second) => first.classValue.localeCompare(second.classValue));
+			default:
+				return sorted;
+		}
+	}, [savedHistory, historySortBy]);
 
 	useEffect(() => {
 		const loadUploadMeta = async () => {
@@ -807,86 +822,6 @@ function TOSBuilder() {
 				</section>
 			</div>
 
-			<section className="teacher-panel teacher-tos-history-panel">
-				<div className="teacher-panel-head">
-					<h2>TOS Save History</h2>
-					<span>{loadingSavedHistory ? 'Loading history...' : `${savedHistory.length} saved version${savedHistory.length === 1 ? '' : 's'}`}</span>
-				</div>
-				{savedHistory.length ? (
-					<div className="teacher-tos-history-list">
-						{savedHistory.map((entry) => (
-							<article
-								key={entry.id}
-								className={`teacher-tos-history-item${selectedHistoryId === entry.id ? ' active' : ''}`}
-								onClick={() => handleSelectHistoryEntry(entry.id)}
-							>
-								<div className="teacher-tos-history-head">
-									<strong>Version {entry.version}</strong>
-									<div className="teacher-tos-history-actions">
-										<button
-											type="button"
-											className="teacher-tos-history-icon-btn"
-											onClick={(event) => {
-												event.stopPropagation();
-												handleEditHistoryEntry(entry);
-											}}
-											aria-label={`Edit version ${entry.version}`}
-										>
-											<EditIcon className="teacher-tos-history-icon" />
-										</button>
-										<button
-											type="button"
-											className="teacher-tos-history-icon-btn danger"
-											onClick={(event) => {
-												event.stopPropagation();
-												void handleDeleteHistoryEntry(entry);
-											}}
-											disabled={deletingHistoryId === entry.id}
-											aria-label={`Delete version ${entry.version}`}
-										>
-											<TrashIcon className="teacher-tos-history-icon" />
-										</button>
-									</div>
-								</div>
-								<span>{formatSavedAtLabel(entry.savedAt)}</span>
-								<p>{entry.classValue} | {entry.subject} | {entry.quarter}</p>
-								<p>{entry.totalItems} items, {entry.totalDays} days, {entry.objectiveCount} objectives</p>
-								{selectedHistoryId === entry.id ? (
-									<div className="teacher-tos-history-detail">
-										<p>Bloom Weights: R {entry.bloomWeights.remembering}% | U {entry.bloomWeights.understanding}% | A {entry.bloomWeights.applying}% | An {entry.bloomWeights.analyzing}% | E {entry.bloomWeights.evaluating}% | C {entry.bloomWeights.creating}%</p>
-										<div className="teacher-table-wrap">
-											<table className="teacher-table teacher-tos-history-table">
-												<thead>
-													<tr>
-														<th>Objective</th>
-														<th>Competency</th>
-														<th>Days</th>
-														<th>%</th>
-														<th>Total Items</th>
-													</tr>
-												</thead>
-												<tbody>
-													{entry.rows.map((row) => (
-														<tr key={`${entry.id}-${row.id}`}>
-															<td>Objective {row.id}</td>
-															<td>{row.competency}</td>
-															<td>{row.days}</td>
-															<td>{row.percentage}</td>
-															<td>{BLOOM_ORDER.reduce((sum, key) => sum + (row.counts[key] ?? 0), 0)}</td>
-														</tr>
-													))}
-												</tbody>
-											</table>
-										</div>
-									</div>
-								) : null}
-							</article>
-						))}
-					</div>
-				) : (
-					<p className="teacher-panel-copy">No database history yet for the selected TOS.</p>
-				)}
-			</section>
 		</TeacherLayout>
 	);
 }

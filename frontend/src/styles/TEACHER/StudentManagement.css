@@ -36,6 +36,168 @@
 	margin-bottom: 0.75rem;
 }
 
+.student-view-toggle-wrap {
+	display: flex;
+	justify-content: flex-start;
+	margin-top: 0.85rem;
+	margin-bottom: 0.55rem;
+}
+
+.student-panel-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.85rem;
+	flex-wrap: wrap;
+}
+
+.student-panel-title-group {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.student-panel-title-group h2 {
+	margin-bottom: 0;
+}
+
+.student-panel-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	padding: 0.25rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	box-shadow: 0 1px 0 rgba(40, 55, 110, 0.03);
+}
+
+.student-panel-toggle button {
+	height: 30px;
+	padding: 0 0.8rem;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.student-panel-toggle button.active {
+	background: var(--surface-soft);
+	color: var(--brand);
+}
+
+.student-panel-controls {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.student-panel-student-controls {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.65rem;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.student-edit-mode-btn,
+.student-cancel-btn {
+	height: 36px;
+	padding: 0 0.85rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--surface);
+	color: var(--brand);
+	font-weight: 700;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.student-edit-mode-btn {
+	width: 36px;
+	padding: 0;
+}
+
+.student-bulk-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.55rem;
+}
+
+.student-select-header,
+.student-select-cell {
+	width: 48px;
+	text-align: center;
+}
+
+.student-select-header input,
+.student-select-cell input {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}
+
+.student-edit-info-btn {
+	height: 30px;
+	padding: 0 0.8rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--brand);
+	font-size: 0.8rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.student-analysis-stack {
+	display: grid;
+	gap: 0.85rem;
+}
+
+.student-analysis-card {
+	display: grid;
+	gap: 0.7rem;
+	padding: 1rem;
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	background: var(--surface-soft);
+}
+
+.student-analysis-card-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.student-analysis-card-head h3 {
+	margin: 0;
+	font-size: 1rem;
+	color: var(--brand);
+}
+
+.student-analysis-card-head span {
+	font-size: 0.82rem;
+	font-weight: 700;
+	color: var(--text-secondary);
+}
+
+.student-analysis-table-wrap {
+	max-height: 360px;
+	overflow: auto;
+}
+
+.student-analysis-table {
+	min-width: 720px;
+}
+
 .student-table-panel {
 	margin-top: 1rem;
 }
@@ -65,24 +227,7 @@
 	color: var(--text-secondary);
 }
 
-.student-actions {
-	display: flex;
-	gap: 0.5rem;
-}
-
-.student-actions button {
-	width: 28px;
-	height: 28px;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--surface);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-}
-
-.student-actions .ui-inline-icon,
+.student-edit-mode-btn .ui-inline-icon,
 .teacher-modal-close .ui-inline-icon {
 	width: 0.95rem;
 	height: 0.95rem;
@@ -187,6 +332,23 @@
 	.student-toolbar {
 		flex-direction: column;
 		align-items: flex-end;
+	}
+
+	.student-view-toggle-wrap {
+		justify-content: flex-start;
+	}
+
+	.student-panel-head {
+		align-items: flex-start;
+	}
+
+	.student-panel-controls {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.student-panel-student-controls {
+		justify-content: flex-start;
 	}
 
 	.student-add-btn {

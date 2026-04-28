@@ -1,11 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
 import { getUploadMetaData, type UploadMetaResponse } from '../../services/teacherPortalApi';
 import { getApiUrl } from '../../services/api';
-import { CheckCircleIcon, FileIcon } from '../../components/icons';
+import { CheckCircleIcon, CloseIcon, FileIcon } from '../../components/icons';
 import '../../styles/TEACHER/UploadResults.css';
 
 function UploadResults() {
+	const navigate = useNavigate();
 	const [data, setData] = useState<UploadMetaResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -135,15 +137,43 @@ function UploadResults() {
 			setSelectedSubject('');
 			setSelectedQuarter('');
 
-			// Reload the page to show the updated data
 			setTimeout(() => {
-				window.location.reload();
-			}, 1500);
+				navigate('/teacher/item-analysis');
+			}, 600);
 		} catch (err) {
 			setSubmitError(err instanceof Error ? err.message : 'Upload failed');
 		} finally {
 			setSubmitting(false);
 		}
+	};
+
+	const handleDownloadTemplate = () => {
+		const itemColumns = Array.from({ length: 50 }, (_, index) => `Q${index + 1}`);
+		const headers = ['Student ID', 'Student Name', ...itemColumns];
+		const sampleRow = ['2026-0001', 'Sample Student', ...itemColumns.map(() => '1')];
+		const blankRow = ['', '', ...itemColumns.map(() => '')];
+
+		const escapeCsvCell = (value: string) => {
+			const normalized = value.replace(/\r?\n/g, ' ').trim();
+			if (normalized.includes(',') || normalized.includes('"')) {
+				return `"${normalized.replace(/"/g, '""')}"`;
+			}
+			return normalized;
+		};
+
+		const csvRows = [headers, sampleRow, blankRow]
+			.map((row) => row.map(escapeCsvCell).join(','))
+			.join('\n');
+
+		const blob = new Blob([`\uFEFF${csvRows}`], { type: 'text/csv;charset=utf-8;' });
+		const downloadUrl = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = downloadUrl;
+		link.download = 'item-analysis-template.csv';
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(downloadUrl);
 	};
 
 	return (
@@ -152,6 +182,14 @@ function UploadResults() {
 				<p>{data?.systemLabel ?? 'UPLOAD AND ANALYZE STUDENT PERFORMANCE DATA'}</p>
 				<div className="teacher-heading-row">
 					<h2>{data?.title ?? 'Upload Quarterly Exam Results'}</h2>
+					<button
+						type="button"
+						className="upload-exit-btn"
+						onClick={() => navigate('/teacher/item-analysis')}
+						aria-label="Exit upload page"
+					>
+						<CloseIcon className="ui-inline-icon" />
+					</button>
 				</div>
 			</section>
 
@@ -250,7 +288,7 @@ function UploadResults() {
 						<h3>Processing Time</h3>
 						<p>{data?.processingTime ?? 'Analysis typically takes 5-10 minutes depending on the number of students.'}</p>
 					</div>
-					<button type="button" className="teacher-secondary-btn">Download Template</button>
+					<button type="button" className="teacher-secondary-btn" onClick={handleDownloadTemplate}>Download Template</button>
 				</section>
 			</div>
 
