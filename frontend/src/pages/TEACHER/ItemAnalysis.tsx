@@ -476,22 +476,44 @@ function ItemAnalysis() {
 		return 'neutral';
 	};
 
-	const updateAnalysisEntry = (index: number, patch: Partial<TosAnalysisEntry>) => {
-		setAnalysisEntries((current) => {
-			const copy = [...current];
-			copy[index] = { ...copy[index], ...patch, itemNumber: index + 1 };
-			return copy;
+	const sortedByDifficulty = useMemo(() => {
+		const items = [...(data?.rows ?? [])].map(row => {
+			const diff = parseIndexValue(row.difficultyIndex) ?? 0;
+			const itemNo = Number(row.itemNo) || 0;
+			return { ...row, itemNo, diffValue: diff };
 		});
-	};
+		return items.sort((a, b) => b.diffValue - a.diffValue);
+	}, [data?.rows]);
 
-	const handleAddAnalysisEntry = () => {
-		setAnalysisEntries((current) => [...current, createAnalysisEntry(current.length + 1)]);
-	};
+	const mostLearnedItems = useMemo(() => {
+		return sortedByDifficulty.slice(0, 10);
+	}, [sortedByDifficulty]);
 
-	const handleDeleteAnalysisEntry = (index: number) => {
+	const leastLearnedItems = useMemo(() => {
+		return [...sortedByDifficulty].reverse().slice(0, 10);
+	}, [sortedByDifficulty]);
+
+	const interpretationSummary = useMemo(() => {
+		const summary = new Map<string, number>();
+		(data?.rows ?? []).forEach(row => {
+			const interp = row.interpretation.trim();
+			if (interp) {
+				summary.set(interp, (summary.get(interp) || 0) + 1);
+			}
+		});
+		return Array.from(summary.entries()).map(([label, count]) => ({ label, count }));
+	}, [data?.rows]);
+
+	const updateAnalysisEntryByItemNo = (itemNo: number, patch: Partial<TosAnalysisEntry>) => {
 		setAnalysisEntries((current) => {
-			const next = current.filter((_, currentIndex) => currentIndex !== index);
-			return next.map((entry, entryIndex) => ({ ...entry, itemNumber: entryIndex + 1 }));
+			const index = current.findIndex(e => e.itemNumber === itemNo);
+			if (index >= 0) {
+				const copy = [...current];
+				copy[index] = { ...copy[index], ...patch };
+				return copy;
+			} else {
+				return [...current, { ...createAnalysisEntry(itemNo), ...patch }];
+			}
 		});
 	};
 
@@ -1074,52 +1096,97 @@ function ItemAnalysis() {
 
 			<section className="teacher-panel teacher-item-analysis-linked-panel">
 				<div className="teacher-panel-head teacher-dash-heading-divider">
-					<h2>Analysis</h2>
+					<h2>Analysis Summary & Interventions</h2>
 					<span>{(appliedSubject || selectedSubject) || 'Select Subject'} | {(appliedClass || selectedClass) || 'Select Class'} | {(appliedQuarter || selectedQuarter) || 'Select Quarter'}</span>
 				</div>
-				<p className="teacher-panel-copy">Type the content area from your T.O.S. and your intervention to meet the gap.</p>
-				<div className="teacher-item-analysis-analysis-actions teacher-item-analysis-analysis-actions-left">
-					<button type="button" className="teacher-secondary-btn" onClick={handleAddAnalysisEntry}>+ Add Item</button>
+				
+				<div className="teacher-item-analysis-summary-box">
+					<h3>Summary of Interpretations</h3>
+					<div className="teacher-summary-grid">
+						{interpretationSummary.map(item => (
+							<div key={`summary-${item.label}`} className="teacher-summary-card">
+								<span className="teacher-summary-count">{item.count}</span>
+								<span className="teacher-summary-label">{item.label}</span>
+							</div>
+						))}
+						{interpretationSummary.length === 0 && (
+							<p className="teacher-status">No summary available.</p>
+						)}
+					</div>
 				</div>
-				<div className="teacher-table-wrap teacher-item-analysis-analysis-wrap">
-					<table className="teacher-table teacher-item-analysis-analysis-table">
-						<thead>
-							<tr>
-								<th>Item Number</th>
-								<th>Content Area Gap</th>
-								<th>Intervention</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{analysisEntries.map((entry, index) => (
-								<tr key={`analysis-entry-${entry.itemNumber}`}>
-									<td>{entry.itemNumber}</td>
-									<td>
-										<input
-											value={entry.contentArea}
-											onChange={(event) => updateAnalysisEntry(index, { contentArea: event.target.value })}
-											placeholder="Enter content area needing support"
-										/>
-									</td>
-									<td>
-										<input
-											value={entry.intervention}
-											onChange={(event) => updateAnalysisEntry(index, { intervention: event.target.value })}
-											placeholder="Enter intervention plan"
-										/>
-									</td>
-									<td className="teacher-item-analysis-action-cell">
-										<button type="button" className="teacher-item-analysis-delete-icon" onClick={() => handleDeleteAnalysisEntry(index)} aria-label="Delete item">
-											✕
-										</button>
-									</td>
+
+				<div className="teacher-item-analysis-top10-container">
+					<div className="teacher-table-wrap teacher-item-analysis-analysis-wrap">
+						<h3>TOP 10 MOST LEARNED TEST ITEMS</h3>
+						<table className="teacher-table teacher-item-analysis-analysis-table">
+							<thead>
+								<tr>
+									<th>ITEM NUMBER</th>
+									<th>CONTENT AREA</th>
 								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-				<div className="teacher-item-analysis-analysis-actions">
+							</thead>
+							<tbody>
+								{mostLearnedItems.map((item) => {
+									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
+									return (
+										<tr key={`most-learned-${item.itemNo}`}>
+											<td>{item.itemNo}</td>
+											<td>
+												<input
+													value={entry.contentArea}
+													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { contentArea: event.target.value })}
+													placeholder="Enter content area"
+												/>
+											</td>
+										</tr>
+									);
+								})}
+								{mostLearnedItems.length === 0 && (
+									<tr><td colSpan={2} style={{ textAlign: 'center' }}>No items available.</td></tr>
+								)}
+							</tbody>
+						</table>
+					</div>
+
+					<div className="teacher-table-wrap teacher-item-analysis-analysis-wrap" style={{ marginTop: '2rem' }}>
+						<h3>TOP 10 LEAST LEARNED TEST ITEMS</h3>
+						<table className="teacher-table teacher-item-analysis-analysis-table">
+							<thead>
+								<tr>
+									<th>ITEM NUMBER</th>
+									<th>CONTENT AREA</th>
+									<th>INTERVENTION</th>
+								</tr>
+							</thead>
+							<tbody>
+								{leastLearnedItems.map((item) => {
+									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
+									return (
+										<tr key={`least-learned-${item.itemNo}`}>
+											<td>{item.itemNo}</td>
+											<td>
+												<input
+													value={entry.contentArea}
+													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { contentArea: event.target.value })}
+													placeholder="Enter content area"
+												/>
+											</td>
+											<td>
+												<input
+													value={entry.intervention}
+													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { intervention: event.target.value })}
+													placeholder="Enter intervention plan"
+												/>
+											</td>
+										</tr>
+									);
+								})}
+								{leastLearnedItems.length === 0 && (
+									<tr><td colSpan={3} style={{ textAlign: 'center' }}>No items available.</td></tr>
+								)}
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</section>
 

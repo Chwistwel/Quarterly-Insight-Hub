@@ -190,8 +190,6 @@
 }
 
 .student-analysis-table-wrap {
-	max-height: 360px;
-	overflow: auto;
 }
 
 .student-analysis-table {

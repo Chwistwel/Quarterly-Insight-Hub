@@ -199,6 +199,7 @@ export type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyz
 
 export type TosRowPayload = {
 	id: number;
+	topic?: string;
 	competency: string;
 	days: number;
 	percentage: number;

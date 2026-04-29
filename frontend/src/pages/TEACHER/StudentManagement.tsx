@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
 import {
@@ -21,8 +21,19 @@ import '../../styles/TEACHER/StudentManagement.css';
 
 type StudentCardView = 'students' | 'analysis';
 type StudentSortBy = 'name' | 'ranking' | 'score';
+type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
 
 const ANALYSIS_QUARTERS = ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'];
+
+const BLOOM_ORDER: TosBloomKey[] = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating'];
+const BLOOM_LABELS: Record<TosBloomKey, string> = {
+	remembering: 'Remembering',
+	understanding: 'Understanding',
+	applying: 'Applying',
+	analyzing: 'Analyzing',
+	evaluating: 'Evaluating',
+	creating: 'Creating'
+};
 
 function getCurrentSchoolYear(): string {
 	const currentYear = new Date().getFullYear();
@@ -81,6 +92,71 @@ function StudentManagement() {
 	const [itemAnalysisData, setItemAnalysisData] = useState<ItemAnalysisResponse | null>(null);
 	const [tosBlueprint, setTosBlueprint] = useState<TosBlueprintRecord | null>(null);
 	const activeClass = useMemo(() => classOptions.find((classItem) => classItem.id === classId), [classOptions, classId]);
+
+	const tosRows = tosBlueprint?.rows || [];
+	const rowTotals = useMemo(
+		() => tosRows.map((row) => BLOOM_ORDER.reduce((sum, key) => sum + row.counts[key], 0)),
+		[tosRows]
+	);
+
+	const bloomTotals = useMemo(() => {
+		const totals: Record<TosBloomKey, number> = {
+			remembering: 0,
+			understanding: 0,
+			applying: 0,
+			analyzing: 0,
+			evaluating: 0,
+			creating: 0
+		};
+		tosRows.forEach((row) => {
+			BLOOM_ORDER.forEach((key) => {
+				totals[key] += row.counts[key];
+			});
+		});
+		return totals;
+	}, [tosRows]);
+
+	const totalAllocatedItems = useMemo(
+		() => rowTotals.reduce((sum, value) => sum + value, 0),
+		[rowTotals]
+	);
+
+	const totalAllocatedPercentage = useMemo(
+		() => tosRows.reduce((sum, row) => sum + row.percentage, 0),
+		[tosRows]
+	);
+
+	const itemPlacements = useMemo(() => {
+		let pointer = 1;
+		const placementRows: Record<TosBloomKey, string>[] = tosRows.map(() => ({
+			remembering: '',
+			understanding: '',
+			applying: '',
+			analyzing: '',
+			evaluating: '',
+			creating: ''
+		}));
+
+		tosRows.forEach((row, rowIndex) => {
+			BLOOM_ORDER.forEach((key) => {
+				const count = row.counts[key];
+				if (count <= 0) {
+					placementRows[rowIndex][key] = '-';
+					return;
+				}
+
+				const values: number[] = [];
+				for (let i = 0; i < count; i += 1) {
+					values.push(pointer);
+					pointer += 1;
+				}
+
+				placementRows[rowIndex][key] = values.join(', ');
+			});
+		});
+
+		return placementRows;
+	}, [tosRows]);
 
 	const loadData = async () => {
 		setLoading(true);
@@ -881,32 +957,97 @@ function StudentManagement() {
 										<h3>Saved TOS</h3>
 										<span>{selectedAnalysisQuarter}</span>
 									</div>
-									{tosBlueprint ? (
-										<div className="teacher-table-wrap student-analysis-table-wrap">
-											<table className="teacher-table student-analysis-table">
+									{tosBlueprint && tosRows.length > 0 ? (
+										<div className="teacher-table-wrap student-analysis-table-wrap" style={{ overflowX: 'auto' }}>
+											<table className="teacher-table student-analysis-table" style={{ minWidth: '1200px', borderCollapse: 'collapse' }}>
 												<thead>
 													<tr>
-														<th>Objective</th>
-														<th>Competency</th>
-														<th>Days</th>
-														<th>%</th>
+														<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Topics</th>
+														<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Competencies</th>
+														<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Days</th>
+														<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Percentage</th>
+														<th colSpan={12} style={{ border: '1px solid var(--border)', textAlign: 'center' }}>BLOOMS TAXONOMY</th>
+														<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Total Number of Items</th>
+													</tr>
+													<tr>
+														{BLOOM_ORDER.map((key) => (
+															<th key={key} colSpan={2} style={{ border: '1px solid var(--border)', textAlign: 'center' }}>
+																{BLOOM_LABELS[key]}
+															</th>
+														))}
+													</tr>
+													<tr>
+														{BLOOM_ORDER.map((key) => (
+															<React.Fragment key={`${key}-sub`}>
+																<th style={{ border: '1px solid var(--border)', textAlign: 'center', fontSize: '0.75rem' }}>NOI</th>
+																<th style={{ border: '1px solid var(--border)', textAlign: 'center', fontSize: '0.75rem' }}>POI</th>
+															</React.Fragment>
+														))}
 													</tr>
 												</thead>
 												<tbody>
-													{tosBlueprint.rows.map((row) => (
+													{tosRows.map((row, rowIndex) => (
 														<tr key={`student-tos-${selectedAnalysisQuarter}-${row.id}`}>
-															<td>Objective {row.id}</td>
-															<td>{row.competency}</td>
-															<td>{row.days}</td>
-															<td>{row.percentage}</td>
+															<td style={{ border: '1px solid var(--border)', padding: '0.5rem' }}>{row.topic || `Topic ${row.id}`}</td>
+															<td style={{ border: '1px solid var(--border)', padding: '0.5rem' }}>{row.competency}</td>
+															<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center' }}>{row.days}</td>
+															<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center' }}>{row.percentage}</td>
+															{BLOOM_ORDER.map((key) => (
+																<React.Fragment key={key}>
+																	<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center' }}>
+																		{row.counts[key]}
+																	</td>
+																	<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+																		{itemPlacements[rowIndex]?.[key] ?? '-'}
+																	</td>
+																</React.Fragment>
+															))}
+															<td className="teacher-tos-total-cell" style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontWeight: 'bold' }}>{rowTotals[rowIndex]}</td>
 														</tr>
 													))}
 												</tbody>
+												<tfoot>
+													<tr>
+														<td colSpan={2} style={{ border: '1px solid var(--border)', textAlign: 'right', paddingRight: '1rem', fontWeight: 'bold' }}>TOTAL</td>
+														<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{tosRows.reduce((sum, row) => sum + row.days, 0)}</td>
+														<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{totalAllocatedPercentage.toFixed(0)}%</td>
+														{BLOOM_ORDER.map((key) => (
+															<React.Fragment key={`${key}-total`}>
+																<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{bloomTotals[key]}</td>
+																<td style={{ border: '1px solid var(--border)', background: '#f5f5f5' }}></td>
+															</React.Fragment>
+														))}
+														<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{totalAllocatedItems}</td>
+													</tr>
+												</tfoot>
 											</table>
 										</div>
 									) : (
 										<p className="teacher-status">No saved TOS found for {selectedAnalysisQuarter}.</p>
 									)}
+									
+									{tosBlueprint && tosRows.length > 0 ? (
+										<div style={{ marginTop: '3rem' }}>
+											<h4 style={{ marginBottom: '1rem', fontSize: '0.95rem' }}>Cognitive Process Distribution</h4>
+											<div className="teacher-tos-bars">
+												{BLOOM_ORDER.map((key) => {
+													const value = bloomTotals[key];
+													const totalItemsVal = tosBlueprint.totalItems || 1;
+													const height = totalItemsVal > 0 ? Math.min(100, (value / totalItemsVal) * 100) : 0;
+						
+													return (
+														<div key={key} className="teacher-tos-bar-item">
+															<div className="teacher-tos-bar-track">
+																<div className="teacher-tos-bar-fill" style={{ height: `${height}%` }} />
+															</div>
+															<strong>{value}</strong>
+															<span>{BLOOM_LABELS[key]}</span>
+														</div>
+													);
+												})}
+											</div>
+										</div>
+									) : null}
 								</section>
 							</>
 						) : (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { EditIcon, TrashIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
@@ -18,6 +18,7 @@ type BloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'ev
 
 type TosRow = {
 	id: number;
+	topic?: string;
 	competency: string;
 	days: number;
 	percentage: number;
@@ -64,6 +65,7 @@ function formatSavedAtLabel(savedAt: string): string {
 function createEmptyRow(index: number): TosRow {
 	return {
 		id: index + 1,
+		topic: '',
 		competency: `Objective ${index + 1}`,
 		days: 0,
 		percentage: 0,
@@ -227,6 +229,7 @@ function TOSBuilder() {
 			if (Array.isArray(draft.rows) && draft.rows.length > 0) {
 				setRows(draft.rows.map((row, index) => ({
 					id: index + 1,
+					topic: row.topic || '',
 					competency: row.competency || `Objective ${index + 1}`,
 					days: sanitizeNumber(row.days),
 					percentage: sanitizeNumber(row.percentage),
@@ -290,6 +293,7 @@ function TOSBuilder() {
 					if (Array.isArray(savedBlueprint.rows) && savedBlueprint.rows.length > 0) {
 						setRows(savedBlueprint.rows.map((row, index) => ({
 							id: index + 1,
+							topic: row.topic || '',
 							competency: row.competency || `Objective ${index + 1}`,
 							days: sanitizeNumber(row.days),
 							percentage: sanitizeNumber(row.percentage),
@@ -521,6 +525,7 @@ function TOSBuilder() {
 		setBloomWeights(entry.bloomWeights ?? DEFAULT_BLOOM_WEIGHTS);
 		setRows(entry.rows.map((row, index) => ({
 			id: index + 1,
+			topic: row.topic || '',
 			competency: row.competency || `Objective ${index + 1}`,
 			days: sanitizeNumber(row.days),
 			percentage: sanitizeNumber(row.percentage),
@@ -660,19 +665,11 @@ function TOSBuilder() {
 					</label>
 				</div>
 
-				<div className="teacher-tos-action-row">
-						<button type="button" className="teacher-filter-apply-btn" onClick={handleSaveDraft} disabled={savingTos}>{savingTos ? 'Saving...' : 'Save TOS'}</button>
-					<button type="button" className="teacher-filter-apply-btn" onClick={handleAutoDistributeItems}>Auto Distribute Items</button>
-					<button type="button" className="teacher-secondary-btn" onClick={resetToDefaults}>Reset</button>
+				<div className="teacher-panel-head" style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+					<h3 style={{ fontSize: '1rem', color: 'var(--primary)' }}>Bloom Taxonomy Weighting</h3>
+					<span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Total: {BLOOM_ORDER.reduce((sum, key) => sum + bloomWeights[key], 0)}%</span>
 				</div>
-			</section>
-
-			<section className="teacher-panel teacher-tos-bloom-panel">
-				<div className="teacher-panel-head">
-					<h2>Bloom Taxonomy Weighting</h2>
-					<span>Total: {BLOOM_ORDER.reduce((sum, key) => sum + bloomWeights[key], 0)}%</span>
-				</div>
-				<div className="teacher-tos-bloom-grid">
+				<div className="teacher-tos-bloom-grid" style={{ marginTop: '1rem' }}>
 					{BLOOM_ORDER.map((key) => (
 						<label key={key}>
 							{BLOOM_LABELS[key]}
@@ -690,31 +687,58 @@ function TOSBuilder() {
 				</div>
 			</section>
 
+			<div className="teacher-tos-action-row" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
+				<button type="button" className="teacher-filter-apply-btn" onClick={handleSaveDraft} disabled={savingTos}>{savingTos ? 'Saving...' : 'Save TOS'}</button>
+				<button type="button" className="teacher-filter-apply-btn" onClick={handleAutoDistributeItems}>Auto Distribute Items</button>
+				<button type="button" className="teacher-secondary-btn" onClick={resetToDefaults}>Reset</button>
+			</div>
+
 			<section className="teacher-panel teacher-tos-table-panel">
 				<div className="teacher-panel-head">
 					<h2>TOS Blueprint Matrix</h2>
 					<span>Total Items Allocated: {totalAllocatedItems}/{totalItems}</span>
 				</div>
-				<div className="teacher-table-wrap teacher-tos-table-wrap">
-					<table className="teacher-table teacher-tos-table">
+				<div className="teacher-table-wrap teacher-tos-table-wrap" style={{ overflowX: 'auto' }}>
+					<table className="teacher-table teacher-tos-table" style={{ minWidth: '1200px', borderCollapse: 'collapse' }}>
 						<thead>
 							<tr>
-								<th>Objective</th>
-								<th>Competency</th>
-								<th>Days</th>
-								<th>%</th>
+								<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Topics</th>
+								<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Competencies</th>
+								<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Days</th>
+								<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Percentage</th>
+								<th colSpan={12} style={{ border: '1px solid var(--border)', textAlign: 'center' }}>BLOOMS TAXONOMY</th>
+								<th rowSpan={3} style={{ border: '1px solid var(--border)', textAlign: 'center', verticalAlign: 'middle' }}>Total Number of Items</th>
+							</tr>
+							<tr>
 								{BLOOM_ORDER.map((key) => (
-									<th key={key}>{BLOOM_LABELS[key]}</th>
+									<th key={key} colSpan={2} style={{ border: '1px solid var(--border)', textAlign: 'center' }}>
+										{BLOOM_LABELS[key]}
+									</th>
 								))}
-								<th>Total Items</th>
+							</tr>
+							<tr>
+								{BLOOM_ORDER.map((key) => (
+									<React.Fragment key={`${key}-sub`}>
+										<th style={{ border: '1px solid var(--border)', textAlign: 'center', fontSize: '0.75rem' }}>NOI</th>
+										<th style={{ border: '1px solid var(--border)', textAlign: 'center', fontSize: '0.75rem' }}>POI</th>
+									</React.Fragment>
+								))}
 							</tr>
 						</thead>
 						<tbody>
 							{rows.map((row, rowIndex) => (
 								<tr key={row.id}>
-									<td>Objective {row.id}</td>
-									<td>
+									<td style={{ border: '1px solid var(--border)', padding: '0.25rem' }}>
 										<input
+											style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none' }}
+											value={row.topic || ''}
+											onChange={(event) => updateRow(rowIndex, (current) => ({ ...current, topic: event.target.value }))}
+											placeholder={`Topic ${row.id}`}
+										/>
+									</td>
+									<td style={{ border: '1px solid var(--border)', padding: '0.25rem' }}>
+										<input
+											style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none' }}
 											value={row.competency}
 											onChange={(event) => {
 												const nextValue = event.target.value;
@@ -722,16 +746,18 @@ function TOSBuilder() {
 											}}
 										/>
 									</td>
-									<td>
+									<td style={{ border: '1px solid var(--border)', padding: '0.25rem', textAlign: 'center' }}>
 										<input
+											style={{ width: '40px', textAlign: 'center', border: 'none', background: 'transparent', outline: 'none' }}
 											type="number"
 											min={0}
 											value={row.days}
 											readOnly
 										/>
 									</td>
-									<td>
+									<td style={{ border: '1px solid var(--border)', padding: '0.25rem', textAlign: 'center' }}>
 										<input
+											style={{ width: '40px', textAlign: 'center', border: 'none', background: 'transparent', outline: 'none' }}
 											type="number"
 											min={0}
 											value={row.percentage}
@@ -739,34 +765,43 @@ function TOSBuilder() {
 										/>
 									</td>
 									{BLOOM_ORDER.map((key) => (
-										<td key={key}>
-											<input
-												type="number"
-												min={0}
-												value={row.counts[key]}
-												onChange={(event) => {
-													const nextValue = sanitizeNumber(Number(event.target.value));
-													updateRow(rowIndex, (current) => ({
-														...current,
-														counts: { ...current.counts, [key]: nextValue }
-														}), true);
-												}}
-											/>
-										</td>
+										<React.Fragment key={key}>
+											<td style={{ border: '1px solid var(--border)', padding: '0.25rem', textAlign: 'center' }}>
+												<input
+													type="number"
+													min={0}
+													value={row.counts[key]}
+													onChange={(event) => {
+														const nextValue = sanitizeNumber(Number(event.target.value));
+														updateRow(rowIndex, (current) => ({
+															...current,
+															counts: { ...current.counts, [key]: nextValue }
+															}), true);
+													}}
+													style={{ width: '40px', textAlign: 'center', border: 'none', background: 'transparent', outline: 'none' }}
+												/>
+											</td>
+											<td style={{ border: '1px solid var(--border)', padding: '0.25rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+												{itemPlacements[rowIndex]?.[key] ?? '-'}
+											</td>
+										</React.Fragment>
 									))}
-									<td className="teacher-tos-total-cell">{rowTotals[rowIndex]}</td>
+									<td className="teacher-tos-total-cell" style={{ border: '1px solid var(--border)', padding: '0.25rem', textAlign: 'center', fontWeight: 'bold' }}>{rowTotals[rowIndex]}</td>
 								</tr>
 							))}
 						</tbody>
 						<tfoot>
 							<tr>
-								<td colSpan={2}>Totals</td>
-								<td>{rows.reduce((sum, row) => sum + row.days, 0)}</td>
-								<td>{totalAllocatedPercentage.toFixed(2)}%</td>
+								<td colSpan={2} style={{ border: '1px solid var(--border)', textAlign: 'right', paddingRight: '1rem', fontWeight: 'bold' }}>TOTAL</td>
+								<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{rows.reduce((sum, row) => sum + row.days, 0)}</td>
+								<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{totalAllocatedPercentage.toFixed(0)}%</td>
 								{BLOOM_ORDER.map((key) => (
-									<td key={key}>{bloomTotals[key]}</td>
+									<React.Fragment key={`${key}-total`}>
+										<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{bloomTotals[key]}</td>
+										<td style={{ border: '1px solid var(--border)', background: '#f5f5f5' }}></td>
+									</React.Fragment>
 								))}
-								<td>{totalAllocatedItems}</td>
+								<td style={{ border: '1px solid var(--border)', textAlign: 'center', fontWeight: 'bold' }}>{totalAllocatedItems}</td>
 							</tr>
 						</tfoot>
 					</table>
@@ -774,33 +809,6 @@ function TOSBuilder() {
 			</section>
 
 			<div className="teacher-tos-bottom-grid">
-				<section className="teacher-panel teacher-tos-panel-compact">
-					<h2>Auto Item Placement</h2>
-					<p className="teacher-panel-copy">Item numbers are generated in sequence based on each objective and Bloom-level count.</p>
-					<div className="teacher-table-wrap teacher-tos-placement-wrap">
-						<table className="teacher-table teacher-tos-placement-table">
-							<thead>
-								<tr>
-									<th>Objective</th>
-									{BLOOM_ORDER.map((key) => (
-										<th key={key}>{BLOOM_LABELS[key]}</th>
-									))}
-								</tr>
-							</thead>
-							<tbody>
-								{rows.map((row, rowIndex) => (
-									<tr key={row.id}>
-										<td>Objective {row.id}</td>
-										{BLOOM_ORDER.map((key) => (
-											<td key={key}>{itemPlacements[rowIndex]?.[key] ?? '-'}</td>
-										))}
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-				</section>
-
 				<section className="teacher-panel teacher-tos-panel-compact">
 					<h2>Cognitive Process Distribution</h2>
 					<div className="teacher-tos-bars">

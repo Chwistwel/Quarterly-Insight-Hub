@@ -46,25 +46,6 @@ function Dashboard() {
 		return `${maxPoint.value}% (${maxPoint.label})`;
 	}, [data]);
 
-	const trendPoints = useMemo(() => {
-		if (!data?.trend?.length) {
-			return '';
-		}
-
-		const max = 100;
-		const width = 760;
-		const height = 220;
-		const step = data.trend.length > 1 ? width / (data.trend.length - 1) : width;
-
-		return data.trend
-			.map((point, index) => {
-				const x = index * step;
-				const normalized = Math.min(100, Math.max(0, point.value));
-				const y = height - (normalized / max) * height;
-				return `${x},${y}`;
-			})
-			.join(' ');
-	}, [data]);
 
 	return (
 		<TeacherLayout title={data?.title ?? 'Dashboard'}>
@@ -121,12 +102,32 @@ function Dashboard() {
 						<h2>Class Performance Trend</h2>
 						{peakTrend ? <span>Peak: {peakTrend}</span> : null}
 					</div>
-					{data?.trend?.length && trendPoints ? (
+					{data?.trend?.length ? (
 						<div className="teacher-line-chart" aria-label="Performance trend chart">
 							<svg viewBox="0 0 760 220" preserveAspectRatio="none">
-								<polyline points={trendPoints} />
+								{data.trend.map((point, index) => {
+									const max = 100;
+									const normalized = Math.min(100, Math.max(0, point.value));
+									const barHeight = (normalized / max) * 220;
+									const y = 220 - barHeight;
+									const step = 760 / data.trend.length;
+									const barWidth = Math.min(60, step * 0.6);
+									const x = index * step + (step - barWidth) / 2;
+									
+									return (
+										<rect 
+											key={point.label}
+											x={x} 
+											y={y} 
+											width={barWidth} 
+											height={barHeight} 
+											fill="var(--primary, #1e3a8a)" 
+											rx="4"
+										/>
+									);
+								})}
 							</svg>
-							<div className="teacher-line-labels">
+							<div className="teacher-line-labels" style={{ display: 'flex', justifyContent: 'space-around' }}>
 								{data.trend.map((point) => (
 									<span key={point.label}>{point.label}</span>
 								))}

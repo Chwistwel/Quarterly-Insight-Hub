@@ -439,8 +439,6 @@
 }
 
 .teacher-item-analysis-analysis-wrap {
-	max-height: 560px;
-	overflow: auto;
 }
 
 .teacher-item-analysis-analysis-table {
@@ -773,4 +771,53 @@
 
 .teacher-item-analysis-history-modal {
 	width: min(900px, 100%);
+}
+
+.teacher-item-analysis-summary-box {
+	margin-bottom: 1.5rem;
+}
+
+.teacher-item-analysis-summary-box h3 {
+	margin: 0 0 0.75rem;
+	font-size: 1.05rem;
+	color: var(--brand);
+}
+
+.teacher-summary-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 1rem;
+}
+
+.teacher-summary-card {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.85rem 1rem;
+	background: var(--surface-soft);
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+}
+
+.teacher-summary-count {
+	font-size: 1.2rem;
+	font-weight: 700;
+	color: var(--brand);
+	background: var(--surface);
+	padding: 0.2rem 0.6rem;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+}
+
+.teacher-summary-label {
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+	line-height: 1.2;
+}
+
+.teacher-item-analysis-top10-container h3 {
+	margin: 0 0 0.75rem;
+	font-size: 1.05rem;
+	color: var(--brand);
+	text-transform: uppercase;
 }
