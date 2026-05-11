@@ -229,6 +229,13 @@ export type TosBlueprintHistoryEntry = TosBlueprintPayload & {
 	savedAt: string;
 };
 
+export type TosBlueprintOptionsResponse = {
+	combinations: Array<Pick<TosBlueprintPayload, 'schoolYear' | 'classValue' | 'subject' | 'quarter'>>;
+	classOptions: string[];
+	subjectOptions: string[];
+	quarterOptions: string[];
+};
+
 function getTeacherAuthHeaders(): Record<string, string> {
 	const role = localStorage.getItem('userRole') ?? '';
 	const email = localStorage.getItem('userEmail') ?? '';
@@ -491,7 +498,30 @@ export async function getTeacherTosBlueprintHistory(query: Pick<TosBlueprintPayl
 		return Array.isArray(payload.history) ? payload.history : [];
 	} catch {
 		return [];
+	}
 }
+
+export async function getTeacherTosCreatedOptions(): Promise<TosBlueprintOptionsResponse> {
+	try {
+		const payload = await fetchJson<TosBlueprintOptionsResponse>('/teacher/tos/options', {
+			method: 'GET',
+			headers: getTeacherAuthHeaders()
+		});
+
+		return {
+			combinations: Array.isArray(payload.combinations) ? payload.combinations : [],
+			classOptions: Array.isArray(payload.classOptions) ? payload.classOptions : [],
+			subjectOptions: Array.isArray(payload.subjectOptions) ? payload.subjectOptions : [],
+			quarterOptions: Array.isArray(payload.quarterOptions) ? payload.quarterOptions : []
+		};
+	} catch {
+		return {
+			combinations: [],
+			classOptions: [],
+			subjectOptions: [],
+			quarterOptions: []
+		};
+	}
 }
 
 export async function deleteTeacherTosHistoryEntry(historyId: string): Promise<void> {

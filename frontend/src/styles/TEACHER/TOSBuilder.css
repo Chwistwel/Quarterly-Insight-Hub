@@ -38,6 +38,125 @@
 	flex-wrap: wrap;
 }
 
+.teacher-tos-heading-row {
+	justify-content: space-between;
+	align-items: center;
+}
+
+.teacher-tos-heading-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.teacher-tos-toggle-btn {
+	height: 40px;
+	min-width: 112px;
+	padding: 0 1rem;
+	border: 1px solid #263673;
+	border-radius: 999px;
+	background: #263673;
+	color: #ffffff;
+	font-size: 0.82rem;
+	font-weight: 700;
+	cursor: pointer;
+	box-shadow: 0 8px 18px rgba(38, 54, 115, 0.18);
+}
+
+.teacher-tos-toggle-btn:hover {
+	background: #1f2d63;
+	border-color: #1f2d63;
+}
+
+.teacher-tos-toggle-bar {
+	margin-top: 0.5rem;
+	justify-self: start;
+	overflow-x: auto;
+}
+
+.teacher-tos-toggle-bar .teacher-content-toggle {
+	min-width: 140px;
+}
+
+.teacher-pill-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1.2rem;
+	border: none;
+	border-radius: 999px;
+	background: #263673;
+	color: #ffffff;
+	font-size: 0.95rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: 0 4px 12px rgba(38, 54, 115, 0.12);
+}
+
+.teacher-pill-btn:hover {
+	background: #1f2d63;
+	box-shadow: 0 6px 16px rgba(38, 54, 115, 0.18);
+}
+
+.teacher-pill-btn.danger {
+	background: #dc2626;
+}
+
+.teacher-pill-btn.danger:hover {
+	background: #b91c1c;
+}
+
+.teacher-pill-btn.secondary {
+	background: #ffffff;
+	color: #263673;
+	border: 1px solid #e5e7eb;
+}
+
+.teacher-pill-btn.secondary:hover {
+	background: #f9fafb;
+	border-color: #d1d5db;
+}
+
+.teacher-icon-btn {
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #ffffff;
+	color: #6b7280;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s ease;
+}
+
+.teacher-icon-btn:hover {
+	background: #f3f4f6;
+	border-color: #9ca3af;
+	color: #374151;
+}
+
+.teacher-icon-btn.danger {
+	border-color: #f3c0c0;
+	color: #cc6c6c;
+}
+
+.teacher-icon-btn.danger:hover {
+	background: #fef2f2;
+	border-color: #ef9a9a;
+	color: #b91c1c;
+}
+
+.teacher-btn-icon {
+	width: 1.1rem;
+	height: 1.1rem;
+}
+
 .teacher-tos-action-row .teacher-filter-apply-btn {
 	min-width: 174px;
 }
@@ -91,6 +210,22 @@
 
 .teacher-tos-table-panel {
 	overflow: hidden;
+}
+
+.teacher-tos-landing-panel {
+	min-height: 40vh;
+	display: grid;
+	place-items: center;
+	padding: 1.5rem;
+}
+
+.teacher-tos-landing-copy {
+	margin: 0;
+	max-width: 36rem;
+	text-align: center;
+	font-size: 0.96rem;
+	line-height: 1.6;
+	color: var(--text-secondary);
 }
 
 .teacher-tos-table-wrap {

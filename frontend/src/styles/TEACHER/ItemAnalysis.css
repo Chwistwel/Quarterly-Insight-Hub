@@ -438,9 +438,6 @@
 	gap: 0.6rem;
 }
 
-.teacher-item-analysis-analysis-wrap {
-}
-
 .teacher-item-analysis-analysis-table {
 	min-width: 1040px;
 }
@@ -783,30 +780,63 @@
 	color: var(--brand);
 }
 
+.teacher-item-analysis-intervention-note {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.35rem 0 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	margin-top: 0.75rem;
+}
+
+.teacher-item-analysis-intervention-note strong {
+	color: var(--brand);
+	font-size: 0.84rem;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+
+.teacher-item-analysis-intervention-note span {
+	color: var(--text-secondary);
+	font-size: 0.84rem;
+	font-weight: 600;
+	text-align: right;
+	flex: 1;
+}
+
+.teacher-item-analysis-intervention-note-footer {
+	margin: 1rem 0 0;
+	padding-top: 0.8rem;
+	border-top: 1px solid var(--border);
+}
+
 .teacher-summary-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 1rem;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	gap: 0.35rem 0.9rem;
 }
 
 .teacher-summary-card {
 	display: flex;
 	align-items: center;
-	gap: 0.75rem;
-	padding: 0.85rem 1rem;
-	background: var(--surface-soft);
-	border: 1px solid var(--border-strong);
-	border-radius: 10px;
+	gap: 0.5rem;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
 }
 
 .teacher-summary-count {
 	font-size: 1.2rem;
 	font-weight: 700;
 	color: var(--brand);
-	background: var(--surface);
-	padding: 0.2rem 0.6rem;
-	border-radius: 6px;
-	border: 1px solid var(--border);
+	background: transparent;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
 }
 
 .teacher-summary-label {

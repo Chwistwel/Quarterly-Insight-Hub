@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import TeacherLayout from './TeacherLayout';
 import {
 	addStudentToClass,
@@ -7,6 +8,7 @@ import {
 	getItemAnalysisData,
 	getMyClassesData,
 	getTeacherTosBlueprint,
+	getTeacherTosCreatedOptions,
 	getStudentManagementData,
 	uploadStudentClassList,
 	updateStudentRecord,
@@ -16,14 +18,33 @@ import {
 	type StudentRecord,
 	type TeacherClassSummary
 } from '../../services/teacherPortalApi';
-import { CloseIcon, EditIcon, TrashIcon } from '../../components/icons';
+import { CloseIcon, EditIcon, FileIcon, PlusIcon, TrashIcon } from '../../components/icons';
 import '../../styles/TEACHER/StudentManagement.css';
 
 type StudentCardView = 'students' | 'analysis';
 type StudentSortBy = 'name' | 'ranking' | 'score';
 type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
+type DifficultyLevel = 'easy' | 'moderate' | 'difficult' | 'unknown';
+type DecisionLabel =
+	| 'Accepted as it is'
+	| 'Accepted with very slight revision'
+	| 'Accepted with slight revision'
+	| 'May be accepted with minor revision'
+	| 'Major revision on the stem or choices'
+	| 'Needs major revision or may be discarded'
+	| 'Totally discard';
 
 const ANALYSIS_QUARTERS = ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'];
+
+const DECISION_ORDER: DecisionLabel[] = [
+	'Accepted as it is',
+	'Accepted with very slight revision',
+	'Accepted with slight revision',
+	'May be accepted with minor revision',
+	'Major revision on the stem or choices',
+	'Needs major revision or may be discarded',
+	'Totally discard'
+];
 
 const BLOOM_ORDER: TosBloomKey[] = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating'];
 const BLOOM_LABELS: Record<TosBloomKey, string> = {
@@ -48,6 +69,109 @@ function getSimpleStudentId(studentId: string): string {
 	}
 
 	return `SID-${normalized.slice(-6)}`;
+}
+
+function parseIndexValue(value: string | number): number | null {
+	const num = Number(value);
+	if (Number.isFinite(num)) {
+		return num > 1 ? num / 100 : num;
+	}
+	if (typeof value === 'string') {
+		const normalized = value.replace(/%/g, '').trim();
+		const parsed = Number(normalized);
+		if (!Number.isFinite(parsed)) {
+			return null;
+		}
+		return parsed > 1 ? parsed / 100 : parsed;
+	}
+	return null;
+}
+
+function normalizeInterpretation(interpretation: string): string {
+	return interpretation.toLowerCase().trim();
+}
+
+function getDifficultyLevel(value: string | number): DifficultyLevel {
+	const parsedValue = parseIndexValue(value);
+	if (parsedValue === null) {
+		return 'unknown';
+	}
+	if (parsedValue >= 0.76) {
+		return 'easy';
+	}
+	if (parsedValue >= 0.26) {
+		return 'moderate';
+	}
+	return 'difficult';
+}
+
+function getDifficultyLabel(value: string | number): string {
+	const level = getDifficultyLevel(value);
+	if (level === 'easy') return 'Easy';
+	if (level === 'moderate') return 'Moderate';
+	if (level === 'difficult') return 'Difficult';
+	return 'N/A';
+}
+
+function getInterpretationClass(interpretation: string): string {
+	const normalized = interpretation.toLowerCase();
+	if (normalized.includes('excellent')) return 'excellent';
+	if (normalized.includes('good')) return 'good';
+	if (normalized.includes('fair')) return 'fair';
+	if (normalized.includes('poor') || normalized.includes('needs')) return 'poor';
+	return 'neutral';
+}
+
+function computeDecision(difficultyValue: string | number, discriminationValue: string | number): DecisionLabel {
+	const diff = parseIndexValue(difficultyValue) ?? -1;
+	const disc = parseIndexValue(discriminationValue) ?? -1;
+
+	if (diff < 0 || disc < 0) {
+		return 'Totally discard';
+	}
+
+	if (disc < 0.1) {
+		return 'Totally discard';
+	}
+
+	if (disc <= 0.19) {
+		if (diff >= 0.5 && diff <= 0.8) {
+			return 'Accepted with very slight revision';
+		}
+		return 'May be accepted with minor revision';
+	}
+
+	if (disc <= 0.29) {
+		if (diff >= 0.5 && diff <= 0.8) {
+			return 'Accepted with slight revision';
+		}
+		return 'May be accepted with minor revision';
+	}
+
+	if (diff > 0.89) {
+		return 'Major revision on the stem or choices';
+	}
+
+	if (diff <= 0.19) {
+		if (disc >= 0.4) {
+			return 'Needs major revision or may be discarded';
+		}
+		return 'Major revision on the stem or choices';
+	}
+
+	if (diff >= 0.5 && diff <= 0.8 && disc >= 0.3) {
+		return 'Accepted as it is';
+	}
+
+	if (diff >= 0.5 && diff <= 0.8 && disc >= 0.2) {
+		return 'Accepted with slight revision';
+	}
+
+	if (disc >= 0.4) {
+		return 'Accepted as it is';
+	}
+
+	return 'May be accepted with minor revision';
 }
 
 function StudentManagement() {
@@ -92,6 +216,30 @@ function StudentManagement() {
 	const [itemAnalysisData, setItemAnalysisData] = useState<ItemAnalysisResponse | null>(null);
 	const [tosBlueprint, setTosBlueprint] = useState<TosBlueprintRecord | null>(null);
 	const activeClass = useMemo(() => classOptions.find((classItem) => classItem.id === classId), [classOptions, classId]);
+
+	const itemResultStatsByItemNo = useMemo(() => {
+		const itemStats = new Map<number, { correctCount: number; totalCount: number }>();
+		(itemAnalysisData?.studentItemResults ?? []).forEach((studentResult: any) => {
+			if (!studentResult.itemResults?.length) {
+				return;
+			}
+
+			studentResult.itemResults.forEach((itemResult: any) => {
+				const itemNo = Number(itemResult.itemNo);
+				if (!Number.isFinite(itemNo)) {
+					return;
+				}
+
+				const current = itemStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+				current.totalCount += 1;
+				if (normalizeInterpretation(itemResult.interpretation) === 'correct') {
+					current.correctCount += 1;
+				}
+				itemStats.set(itemNo, current);
+			});
+		});
+		return itemStats;
+	}, [itemAnalysisData?.studentItemResults]);
 
 	const tosRows = tosBlueprint?.rows || [];
 	const rowTotals = useMemo(
@@ -158,6 +306,16 @@ function StudentManagement() {
 		return placementRows;
 	}, [tosRows]);
 
+	const decisionSummary = useMemo(() => {
+		const summary = new Map<DecisionLabel, number>();
+		DECISION_ORDER.forEach((label) => summary.set(label, 0));
+		(itemAnalysisData?.rows ?? []).forEach((row) => {
+			const label = computeDecision(row.difficultyIndex, row.discriminationIndex);
+			summary.set(label, (summary.get(label) ?? 0) + 1);
+		});
+		return DECISION_ORDER.map((label) => ({ label, count: summary.get(label) ?? 0 }));
+	}, [itemAnalysisData?.rows]);
+
 	const loadData = async () => {
 		setLoading(true);
 		setError(null);
@@ -205,13 +363,32 @@ function StudentManagement() {
 			try {
 				const schoolYear = getCurrentSchoolYear();
 				const classValue = `${activeClass.grade} - ${activeClass.section}`;
+
+				// Try to resolve saved TOS quarter formats by looking up created options
+				let queryQuarter = selectedAnalysisQuarter;
+				let querySchoolYear = schoolYear;
+				try {
+					const options = await getTeacherTosCreatedOptions();
+					const matched = options.combinations.find((entry) => {
+						return entry.classValue === classValue && entry.subject === activeClass.subject &&
+						// normalize digits in quarter so "1st Quarter" and "Quarter 1" match
+						(entry.quarter || '').replace(/[^0-9]/g, '') === (selectedAnalysisQuarter || '').replace(/[^0-9]/g, '');
+					});
+					if (matched) {
+						queryQuarter = matched.quarter;
+						querySchoolYear = matched.schoolYear || schoolYear;
+					}
+				} catch {
+					// ignore and fallback to provided quarter
+				}
+
 				const [analysisResponse, tosResponse] = await Promise.all([
 					getItemAnalysisData(classValue, activeClass.subject, selectedAnalysisQuarter),
 					getTeacherTosBlueprint({
-						schoolYear,
+						schoolYear: querySchoolYear,
 						classValue,
 						subject: activeClass.subject,
-						quarter: selectedAnalysisQuarter
+						quarter: queryQuarter
 					})
 				]);
 
@@ -462,6 +639,46 @@ function StudentManagement() {
 		}
 	};
 
+	const handleDownloadClassListTemplate = () => {
+		const itemColumns = Array.from({ length: 50 }, (_, index) => `Item ${index + 1}`);
+		const headerRow = ['Student ID', 'Student Name', ...itemColumns, 'Ranking'];
+		const emptyAssessmentColumns = itemColumns.map(() => '');
+
+		const dataRows = sortedStudents.map((student) => {
+			const firstName = String(student.firstNameDisplay ?? '').trim();
+			const lastName = String(student.lastNameDisplay ?? '').trim();
+			const fullName = [firstName, lastName].filter(Boolean).join(' ') || String(student.name ?? '').trim();
+
+			return [
+				student.studentSimpleId,
+				fullName,
+				...emptyAssessmentColumns,
+				''
+			];
+		});
+
+		const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+		worksheet['!cols'] = [
+			{ wch: 14 },
+			{ wch: 24 },
+			...itemColumns.map(() => ({ wch: 10 })),
+			{ wch: 12 }
+		];
+
+		const workbook = XLSX.utils.book_new();
+		XLSX.utils.book_append_sheet(workbook, worksheet, 'Class List Template');
+
+		const classToken = activeClass
+			? `${activeClass.grade}-${activeClass.section}-${activeClass.subject}`
+			: 'all-classes';
+		const safeClassToken = classToken.replace(/[^a-zA-Z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+		const dateToken = new Date().toISOString().slice(0, 10);
+		const fileName = `class-list-template-${safeClassToken || 'class'}-${dateToken}.xlsx`;
+
+		XLSX.writeFile(workbook, fileName);
+		setActionMessage('Class list Excel template downloaded.');
+	};
+
 	const sortedStudents = useMemo(() => {
 		const students = [...(data?.students ?? [])];
 
@@ -591,14 +808,6 @@ function StudentManagement() {
 				</div>
 			</section>
 
-			<div className="student-toolbar">
-				<button type="button" className="teacher-secondary-btn student-upload-btn" onClick={openUploadModal}>
-					Upload Class List
-				</button>
-				<button type="button" className="teacher-primary-btn student-add-btn" onClick={openAddModal}>
-					+ Add Student
-				</button>
-			</div>
 
 			{showUploadModal ? (
 				<div className="teacher-modal-backdrop" onClick={closeUploadModal}>
@@ -777,6 +986,7 @@ function StudentManagement() {
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
 
 			<div className="student-view-toggle-wrap">
+			<div className="student-toggle-and-sort">
 				<div className="student-panel-toggle" role="tablist" aria-label="Student card views">
 					<button
 						type="button"
@@ -798,78 +1008,104 @@ function StudentManagement() {
 					</button>
 				</div>
 			</div>
+			<div className="student-action-buttons">
+				{selectedStudentCardView === 'students' ? (
+					<>
+						{activeClass ? (
+							<button
+								type="button"
+								className="teacher-secondary-btn student-template-download-btn"
+								onClick={handleDownloadClassListTemplate}
+							>
+								<FileIcon className="ui-inline-icon" />
+								Download Template
+							</button>
+						) : null}
+						<button type="button" className="teacher-primary-btn student-upload-btn" onClick={openUploadModal}>
+							<FileIcon className="ui-inline-icon" />
+							Upload Class
+						</button>
+					</>
+				) : null}
+			</div>
+		</div>
 
-			<section className="teacher-panel student-table-panel">
-				<div className="teacher-panel-head student-panel-head">
-					<div className="student-panel-title-group">
-						<h2>{`All Students (${sortedStudents.length})`}</h2>
-					</div>
-					<div className="student-panel-controls">
-						{selectedStudentCardView === 'students' ? (
-							<div className="student-panel-student-controls">
-								{studentEditMode ? (
-									<div className="student-bulk-actions" role="group" aria-label="Bulk student actions">
-										<button type="button" className="student-cancel-btn" onClick={handleCancelEditMode} disabled={deletingStudent}>
-											Cancel
-										</button>
-										<button
-											type="button"
-											className="student-delete-btn"
-											onClick={handleDeleteSelectedStudents}
-											disabled={deletingStudent || selectedStudentIds.length === 0}
-										>
-											<TrashIcon className="ui-inline-icon" />
-											{deletingStudent ? 'Deleting...' : `Delete (${selectedStudentIds.length})`}
-										</button>
-									</div>
-								) : (
-									<button
-										type="button"
-										className="student-edit-mode-btn"
-										onClick={handleEnterEditMode}
-										aria-label="Edit student information and select students"
-									>
-										<EditIcon className="ui-inline-icon" />
-									</button>
-								)}
-
-								<label className="teacher-sort-control" aria-label="Sort students">
-									<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-										<path d="M4 6h12" />
-										<path d="M4 12h8" />
-										<path d="M4 18h14" />
-										<path d="M18 8l2-2 2 2" />
-										<path d="M20 6v12" />
-									</svg>
-									<select value={studentSortBy} onChange={(event) => setStudentSortBy(event.target.value as StudentSortBy)}>
-										<option value="name">Sort by: Name</option>
-										<option value="ranking">Sort by: Ranking</option>
-										<option value="score">Sort by: Score</option>
-									</select>
-								</label>
+	<section className="teacher-panel student-table-panel">
+		<div className="teacher-panel-head student-panel-head">
+			<div className="student-panel-title-group">
+				<h2>{`All Students (${sortedStudents.length})`}</h2>
+				{selectedStudentCardView === 'students' ? (
+					<label className="teacher-sort-control" aria-label="Sort students">
+						<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+							<path d="M4 6h12" />
+							<path d="M4 12h8" />
+							<path d="M4 18h14" />
+							<path d="M18 8l2-2 2 2" />
+							<path d="M20 6v12" />
+						</svg>
+						<select value={studentSortBy} onChange={(event) => setStudentSortBy(event.target.value as StudentSortBy)}>
+							<option value="name">Sort by: Name</option>
+							<option value="ranking">Sort by: Ranking</option>
+							<option value="score">Sort by: Score</option>
+						</select>
+					</label>
+				) : (
+					<label className="teacher-sort-control" aria-label="Select analysis quarter">
+						<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+							<path d="M4 6h12" />
+							<path d="M4 12h8" />
+							<path d="M4 18h14" />
+							<path d="M18 8l2-2 2 2" />
+							<path d="M20 6v12" />
+						</svg>
+						<select value={selectedAnalysisQuarter} onChange={(event) => setSelectedAnalysisQuarter(event.target.value)}>
+							{ANALYSIS_QUARTERS.map((quarter) => (
+								<option key={quarter} value={quarter}>{quarter}</option>
+							))}
+						</select>
+					</label>
+				)}
+			</div>
+			<div className="student-panel-controls">
+				{selectedStudentCardView === 'students' ? (
+					<div className="student-panel-student-controls">
+						{studentEditMode ? (
+							<div className="student-bulk-actions" role="group" aria-label="Bulk student actions">
+								<button type="button" className="student-cancel-btn" onClick={handleCancelEditMode} disabled={deletingStudent}>
+									Cancel
+								</button>
+								<button
+									type="button"
+									className="student-delete-btn"
+									onClick={handleDeleteSelectedStudents}
+									disabled={deletingStudent || selectedStudentIds.length === 0}
+								>
+									<TrashIcon className="ui-inline-icon" />
+									{deletingStudent ? 'Deleting...' : `Delete (${selectedStudentIds.length})`}
+								</button>
+								<button type="button" className="teacher-primary-btn student-add-inline-btn" onClick={openAddModal}>
+									<PlusIcon className="ui-inline-icon" />
+									Add
+								</button>
 							</div>
 						) : (
-							<label className="teacher-sort-control" aria-label="Select analysis quarter">
-								<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-									<path d="M4 6h12" />
-									<path d="M4 12h8" />
-									<path d="M4 18h14" />
-									<path d="M18 8l2-2 2 2" />
-									<path d="M20 6v12" />
-								</svg>
-								<select value={selectedAnalysisQuarter} onChange={(event) => setSelectedAnalysisQuarter(event.target.value)}>
-									{ANALYSIS_QUARTERS.map((quarter) => (
-										<option key={quarter} value={quarter}>{quarter}</option>
-									))}
-								</select>
-							</label>
+							<button
+								type="button"
+								className="student-edit-mode-btn"
+								onClick={handleEnterEditMode}
+								aria-label="Edit student information and select students"
+							>
+								<EditIcon className="ui-inline-icon" />
+							</button>
 						)}
 					</div>
-				</div>
+				) : null}
+			</div>
+		</div>
 
-				{selectedStudentCardView === 'students' ? (
-					<div className="teacher-table-wrap">
-						<table className="teacher-table student-table">
+		{selectedStudentCardView === 'students' ? (
+			<div className="teacher-table-wrap">
+				<table className="teacher-table student-table">
 							<thead>
 								<tr>
 									{studentEditMode ? <th className="student-select-header"><input type="checkbox" checked={allStudentsSelected} onChange={handleSelectAllStudents} aria-label="Select all students" /></th> : null}
@@ -925,28 +1161,60 @@ function StudentManagement() {
 										<span>{selectedAnalysisQuarter}</span>
 									</div>
 									{itemAnalysisData?.rows?.length ? (
-										<div className="teacher-table-wrap student-analysis-table-wrap">
-											<table className="teacher-table student-analysis-table">
-												<thead>
-													<tr>
-														<th>Item No.</th>
-														<th>Difficulty Index</th>
-														<th>Discrimination Index</th>
-														<th>Interpretation</th>
-													</tr>
-												</thead>
-												<tbody>
-													{itemAnalysisData.rows.map((row) => (
-														<tr key={`student-analysis-${selectedAnalysisQuarter}-${row.itemNo}`}>
-															<td>{row.itemNo}</td>
-															<td>{row.difficultyIndex}</td>
-															<td>{row.discriminationIndex}</td>
-															<td>{row.interpretation}</td>
+										<>
+											<div className="teacher-table-wrap student-analysis-table-wrap">
+												<table className="teacher-table student-analysis-table">
+													<thead>
+														<tr>
+															<th>Item #</th>
+															<th>Difficulty Index</th>
+															<th>Difficulty</th>
+															<th>Discrimination Index</th>
+															<th>Result</th>
+															<th>Interpretation</th>
+															<th>Decision</th>
 														</tr>
+													</thead>
+													<tbody>
+														{itemAnalysisData.rows.map((row) => {
+															const itemNo = Number(row.itemNo);
+															const itemResultStats = Number.isFinite(itemNo) ? itemResultStatsByItemNo.get(itemNo) : null;
+															return (
+															<tr key={`student-analysis-${selectedAnalysisQuarter}-${row.itemNo}`}>
+																<td>{row.itemNo}</td>
+																<td>{row.difficultyIndex}</td>
+																<td>
+																	<span className={`teacher-badge difficulty-${getDifficultyLevel(row.difficultyIndex)}`}>
+																		{getDifficultyLabel(row.difficultyIndex)}
+																	</span>
+																</td>
+																<td>{row.discriminationIndex}</td>
+																<td>{`${itemResultStats?.correctCount ?? 0}/${itemResultStats?.totalCount ?? 0}`}</td>
+																<td>
+																	<span className={`teacher-badge ${getInterpretationClass(row.interpretation)}`}>
+																		{row.interpretation}
+																	</span>
+																</td>
+																<td>{computeDecision(row.difficultyIndex, row.discriminationIndex)}</td>
+															</tr>
+															);
+														})}
+													</tbody>
+												</table>
+											</div>
+
+											<div className="student-analysis-summary-section">
+												<h4>Summary of Results</h4>
+												<div className="student-analysis-summary-row">
+													{decisionSummary.filter(item => item.count > 0).map(item => (
+														<div key={`summary-${item.label}`} className="student-analysis-summary-item">
+															<span className="student-analysis-summary-count">{item.count}</span>
+															<span className="student-analysis-summary-label">{item.label}</span>
+														</div>
 													))}
-												</tbody>
-											</table>
-										</div>
+												</div>
+											</div>
+										</>
 									) : (
 										<p className="teacher-status">No uploaded analysis found for {selectedAnalysisQuarter}.</p>
 									)}
@@ -1055,6 +1323,7 @@ function StudentManagement() {
 						)}
 					</div>
 				)}
+
 			</section>
 		</TeacherLayout>
 	);

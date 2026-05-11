@@ -84,7 +84,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 					<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
 					<div>
 						<h2>{displayName}</h2>
-						<p>Math Teacher</p>
+						<p>Teacher</p>
 					</div>
 				</div>
 

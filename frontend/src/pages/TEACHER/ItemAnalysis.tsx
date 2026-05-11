@@ -25,6 +25,37 @@ type IndividualSortBy = 'name' | 'ranking' | 'score';
 
 type DifficultyLevel = 'easy' | 'moderate' | 'difficult' | 'unknown';
 
+type DecisionLabel =
+	| 'Accepted as it is'
+	| 'Accepted with very slight revision'
+	| 'Accepted with slight revision'
+	| 'May be accepted with minor revision'
+	| 'Major revision on the stem or choices'
+	| 'Needs major revision or may be discarded'
+	| 'Totally discard';
+
+const DECISION_ORDER: DecisionLabel[] = [
+	'Accepted as it is',
+	'Accepted with very slight revision',
+	'Accepted with slight revision',
+	'May be accepted with minor revision',
+	'Major revision on the stem or choices',
+	'Needs major revision or may be discarded',
+	'Totally discard'
+];
+
+type StoredTosBlueprintDraft = {
+	schoolYear?: string;
+	quarter?: string;
+	classValue?: string;
+	subject?: string;
+	rows?: Array<{
+		id?: number;
+		competency?: string;
+		counts?: Partial<Record<'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating', number>>;
+	}>;
+};
+
 type IndividualItemResult = {
 	itemNo: number;
 	item: string;
@@ -138,6 +169,95 @@ function getDifficultyLabel(value: string | number): string {
 	return 'N/A';
 }
 
+function computeDecision(difficultyValue: string | number, discriminationValue: string | number): DecisionLabel {
+	const diff = parseIndexValue(difficultyValue) ?? -1;
+	const disc = parseIndexValue(discriminationValue) ?? -1;
+
+	if (diff < 0 || disc < 0) return 'Totally discard';
+
+	if (diff >= 0.85 && disc >= 0.4) return 'Accepted as it is';
+	if (diff >= 0.7 && disc >= 0.3) return 'Accepted with very slight revision';
+	if (diff >= 0.45 && disc >= 0.2) return 'Accepted with slight revision';
+	if (diff >= 0.2 && disc >= 0.1) return 'May be accepted with minor revision';
+	if (diff >= 0.2 && disc >= 0) return 'Major revision on the stem or choices';
+	if (diff >= 0.05 || disc >= -0.05) return 'Needs major revision or may be discarded';
+
+	return 'Totally discard';
+}
+
+function normalizeTextToken(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+function normalizeQuarter(value: string): string {
+	const match = value.match(/(\d+)/);
+	if (!match) {
+		return value.trim();
+	}
+
+	const quarterDigits = match[1] ?? '';
+	const quarterNumber = Number.parseInt(quarterDigits, 10);
+	if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) {
+		return value.trim();
+	}
+
+	return `Q${quarterNumber}`;
+}
+
+function buildQuarterDraftStorageKey(classValue: string, subject: string, quarter: string): string {
+	return [
+		'teacher-tos-builder-draft',
+		normalizeTextToken(classValue),
+		normalizeTextToken(subject),
+		normalizeQuarter(quarter)
+	].join('::');
+}
+
+function buildCompetencyMapFromSavedTos(classValue: string, subject: string, quarter: string): Map<number, string> {
+	const map = new Map<number, string>();
+
+	try {
+		const raw = localStorage.getItem(buildQuarterDraftStorageKey(classValue, subject, quarter))
+			?? localStorage.getItem('teacher-tos-builder-draft');
+		if (!raw) {
+			return map;
+		}
+
+		const draft = JSON.parse(raw) as StoredTosBlueprintDraft;
+		const sameClass = normalizeTextToken(String(draft.classValue ?? '')) === normalizeTextToken(classValue);
+		const sameSubject = normalizeTextToken(String(draft.subject ?? '')) === normalizeTextToken(subject);
+		const sameQuarter = normalizeQuarter(String(draft.quarter ?? '')) === normalizeQuarter(quarter);
+
+		if (!sameClass || !sameSubject || !sameQuarter) {
+			return map;
+		}
+
+		const bloomOrder: Array<'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating'> = [
+			'remembering',
+			'understanding',
+			'applying',
+			'analyzing',
+			'evaluating',
+			'creating'
+		];
+		let itemNo = 1;
+
+		(draft.rows ?? []).forEach((row, rowIndex) => {
+			bloomOrder.forEach((key) => {
+				const count = Number(row.counts?.[key] ?? 0) || 0;
+				for (let index = 0; index < count; index += 1) {
+					map.set(itemNo, String(row.competency ?? '').trim() || `Objective ${rowIndex + 1}`);
+					itemNo += 1;
+				}
+			});
+		});
+	} catch {
+		return map;
+	}
+
+	return map;
+}
+
 function ItemAnalysis() {
 	const navigate = useNavigate();
 	const [data, setData] = useState<ItemAnalysisResponse | null>(null);
@@ -210,6 +330,17 @@ function ItemAnalysis() {
 		return findLinkedTosRecord(classToken, subjectToken, quarterToken);
 	}, [appliedClass, selectedClass, appliedSubject, selectedSubject, appliedQuarter, selectedQuarter, linkedRecordsVersion]);
 
+	const itemToCompetency = useMemo(() => {
+		const classToken = appliedClass || selectedClass;
+		const subjectToken = appliedSubject || selectedSubject;
+		const quarterToken = appliedQuarter || selectedQuarter;
+		if (!classToken || !subjectToken || !quarterToken) {
+			return new Map<number, string>();
+		}
+
+		return buildCompetencyMapFromSavedTos(classToken, subjectToken, quarterToken);
+	}, [appliedClass, selectedClass, appliedSubject, selectedSubject, appliedQuarter, selectedQuarter]);
+
 	const filteredRows = useMemo(() => {
 		const rows = data?.rows ?? [];
 		if (selectedPerformance === 'all') {
@@ -246,6 +377,36 @@ function ItemAnalysis() {
 		}
 		return 40;
 	}, [data?.totalItems, linkedRecord?.totalItems, filteredRows.length]);
+
+	const scoreSummary = useMemo(() => {
+		const rawResults = data?.studentResults ?? data?.studentItemResults ?? [];
+		const scores = rawResults
+			.map((result) => Number(result.totalScore))
+			.filter((score) => Number.isFinite(score));
+
+		if (scores.length === 0) {
+			return null;
+		}
+
+		const highestScore = Math.max(...scores);
+		const lowestScore = Math.min(...scores);
+		const totalScore = scores.reduce((sum, score) => sum + score, 0);
+		const meanScore = totalScore / scores.length;
+		const mps = targetAnalysisCount > 0 ? (meanScore / targetAnalysisCount) * 100 : 0;
+		const passingThreshold = Math.max(1, Math.ceil(targetAnalysisCount / 2));
+		const passing = scores.filter((score) => score >= passingThreshold).length;
+		const failing = scores.length - passing;
+
+		return {
+			highestScore,
+			lowestScore,
+			meanScore,
+			totalScore,
+			mps,
+			passing,
+			failing
+		};
+	}, [data?.studentItemResults, data?.studentResults, targetAnalysisCount]);
 
 	const createAnalysisEntry = (itemNumber: number): TosAnalysisEntry => ({
 		itemNumber,
@@ -493,15 +654,14 @@ function ItemAnalysis() {
 		return [...sortedByDifficulty].reverse().slice(0, 10);
 	}, [sortedByDifficulty]);
 
-	const interpretationSummary = useMemo(() => {
-		const summary = new Map<string, number>();
-		(data?.rows ?? []).forEach(row => {
-			const interp = row.interpretation.trim();
-			if (interp) {
-				summary.set(interp, (summary.get(interp) || 0) + 1);
-			}
+    const decisionSummary = useMemo(() => {
+		const summary = new Map<DecisionLabel, number>();
+		DECISION_ORDER.forEach((label) => summary.set(label, 0));
+		(data?.rows ?? []).forEach((row) => {
+			const label = computeDecision(row.difficultyIndex, row.discriminationIndex);
+			summary.set(label, (summary.get(label) ?? 0) + 1);
 		});
-		return Array.from(summary.entries()).map(([label, count]) => ({ label, count }));
+		return DECISION_ORDER.map((label) => ({ label, count: summary.get(label) ?? 0 }));
 	}, [data?.rows]);
 
 	const updateAnalysisEntryByItemNo = (itemNo: number, patch: Partial<TosAnalysisEntry>) => {
@@ -738,7 +898,7 @@ function ItemAnalysis() {
 					role="tab"
 					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
 				>
-					TOS Builder
+					TOS
 				</NavLink>
 			</div>
 
@@ -1061,6 +1221,7 @@ function ItemAnalysis() {
 									<th>Discrimination Index</th>
 									<th>Result</th>
 									<th>Interpretation</th>
+									<th>Decision</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -1083,6 +1244,7 @@ function ItemAnalysis() {
 													{row.interpretation}
 												</span>
 											</td>
+											<td>{computeDecision(row.difficultyIndex, row.discriminationIndex)}</td>
 										</tr>
 									);
 								})}
@@ -1092,28 +1254,36 @@ function ItemAnalysis() {
 				) : (
 					<p className="teacher-status">No item analysis entries found.</p>
 				)}
-			</section>
 
-			<section className="teacher-panel teacher-item-analysis-linked-panel">
-				<div className="teacher-panel-head teacher-dash-heading-divider">
-					<h2>Analysis Summary & Interventions</h2>
-					<span>{(appliedSubject || selectedSubject) || 'Select Subject'} | {(appliedClass || selectedClass) || 'Select Class'} | {(appliedQuarter || selectedQuarter) || 'Select Quarter'}</span>
-				</div>
-				
-				<div className="teacher-item-analysis-summary-box">
-					<h3>Summary of Interpretations</h3>
-					<div className="teacher-summary-grid">
-						{interpretationSummary.map(item => (
-							<div key={`summary-${item.label}`} className="teacher-summary-card">
-								<span className="teacher-summary-count">{item.count}</span>
-								<span className="teacher-summary-label">{item.label}</span>
-							</div>
-						))}
-						{interpretationSummary.length === 0 && (
-							<p className="teacher-status">No summary available.</p>
-						)}
+				{scoreSummary ? (
+					<div className="teacher-item-analysis-intervention-note teacher-item-analysis-intervention-note-footer">
+				<strong>Score Summary</strong>
+				<span>{scoreSummary.highestScore} Highest Score | {scoreSummary.lowestScore} Lowest Score | {scoreSummary.meanScore.toFixed(2)} Mean | {scoreSummary.mps.toFixed(2)}% MPS | {Math.round(scoreSummary.totalScore)} Total Score | {scoreSummary.passing} Passing | {scoreSummary.failing} Failing</span>
+			</div>
+		) : null}
+	</section>
+
+	<section className="teacher-panel teacher-item-analysis-linked-panel">
+		<div className="teacher-panel-head teacher-dash-heading-divider">
+			<h2>Analysis Summary & Interventions</h2>
+			<span>{(appliedSubject || selectedSubject) || 'Select Subject'} | {(appliedClass || selectedClass) || 'Select Class'} | {(appliedQuarter || selectedQuarter) || 'Select Quarter'}</span>
+		</div>
+		
+		<div className="teacher-item-analysis-summary-box">
+			<h3>Summary of Results</h3>
+			<div className="teacher-summary-grid">
+				{decisionSummary.map(item => (
+					<div key={`summary-${item.label}`} className="teacher-summary-card">
+						<span className="teacher-summary-count">{item.count}</span>
+						<span className="teacher-summary-label">{item.label}</span>
 					</div>
-				</div>
+				))}
+				{decisionSummary.length === 0 && (
+					<p className="teacher-status">No summary available.</p>
+				)}
+			</div>
+
+		</div>
 
 				<div className="teacher-item-analysis-top10-container">
 					<div className="teacher-table-wrap teacher-item-analysis-analysis-wrap">
@@ -1128,15 +1298,13 @@ function ItemAnalysis() {
 							<tbody>
 								{mostLearnedItems.map((item) => {
 									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
+									const autoContent = itemToCompetency.get(Number(item.itemNo));
+									const displayContent = autoContent ?? entry.contentArea ?? '-';
 									return (
 										<tr key={`most-learned-${item.itemNo}`}>
 											<td>{item.itemNo}</td>
 											<td>
-												<input
-													value={entry.contentArea}
-													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { contentArea: event.target.value })}
-													placeholder="Enter content area"
-												/>
+												<div style={{ padding: '0.25rem 0.5rem', color: 'var(--text-main)' }}>{displayContent}</div>
 											</td>
 										</tr>
 									);
@@ -1161,15 +1329,13 @@ function ItemAnalysis() {
 							<tbody>
 								{leastLearnedItems.map((item) => {
 									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
+									const autoContent = itemToCompetency.get(Number(item.itemNo));
+									const displayContent = autoContent ?? entry.contentArea ?? '-';
 									return (
 										<tr key={`least-learned-${item.itemNo}`}>
 											<td>{item.itemNo}</td>
 											<td>
-												<input
-													value={entry.contentArea}
-													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { contentArea: event.target.value })}
-													placeholder="Enter content area"
-												/>
+												<div style={{ padding: '0.25rem 0.5rem', color: 'var(--text-main)' }}>{displayContent}</div>
 											</td>
 											<td>
 												<input

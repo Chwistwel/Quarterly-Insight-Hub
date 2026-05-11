@@ -140,45 +140,29 @@ function Dashboard() {
 				</section>
 
 				<div className="teacher-dashboard-side-panels">
-					<section className="teacher-panel">
-					<h2>Top Performing Students</h2>
-					{data?.topStudents?.length ? (
-						<ul className="teacher-highlight-list">
-							{data.topStudents.map((item) => (
-								<li key={item.name}>
-									<div>
-										<span>{item.name}</span>
-										<small>{item.improvement}</small>
-									</div>
-									<strong>{item.score}</strong>
-								</li>
-							))}
-						</ul>
-					) : (
-						<p className="teacher-status">No student performance records yet.</p>
-					)}
-					</section>
-
-					<section className="teacher-panel">
-						<h2>Areas for Improvement</h2>
-						{data?.improvementAreas?.length ? (
-							<ul className="teacher-progress-list">
-								{data.improvementAreas.map((item) => (
-									<li key={item.area}>
-										<div>
-											<span>{item.area}</span>
-											<strong>{item.value}</strong>
-										</div>
-										<div className="teacher-progress-track">
-											<div className="teacher-progress-fill" style={{ width: typeof item.value === 'number' ? `${Math.min(100, Math.max(0, item.value))}%` : item.value.toString() }} />
-										</div>
-									</li>
-								))}
-							</ul>
+					<section className="teacher-panel teacher-top-students-panel">
+						<div className="teacher-panel-head">
+							<h2>Top Performing Students</h2>
+						</div>
+						{data?.topStudents?.length ? (
+							<div className="teacher-top-students-scroll">
+								<ul className="teacher-highlight-list plain">
+									{data.topStudents.slice(0, 10).map((item, index) => (
+										<li key={item.name}>
+											<div>
+												<span>{index + 1}. {item.name}</span>
+											</div>
+											<strong>{item.score}</strong>
+										</li>
+									))}
+								</ul>
+							</div>
 						) : (
-							<p className="teacher-status">No improvement metrics yet.</p>
+							<p className="teacher-status">No student performance records yet.</p>
 						)}
 					</section>
+
+					{/* Areas for Improvement removed as requested */}
 				</div>
 			</div>
 

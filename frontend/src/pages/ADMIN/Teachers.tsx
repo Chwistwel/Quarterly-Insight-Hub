@@ -43,8 +43,9 @@ type TeacherEditFormState = {
   firstName: string;
   lastName: string;
   email: string;
-  password: string;
-  confirmPassword: string;
+  oldPassword?: string;
+  password?: string;
+  confirmPassword?: string;
 };
 
 const initialTeacherAccountFormState: TeacherAccountFormState = {
@@ -66,6 +67,7 @@ function Teachers() {
     firstName: '',
     lastName: '',
     email: '',
+    oldPassword: '',
     password: '',
     confirmPassword: ''
   });
@@ -192,6 +194,7 @@ function Teachers() {
       firstName: teacher.firstName,
       lastName: teacher.lastName,
       email: teacher.email,
+      oldPassword: '',
       password: '',
       confirmPassword: ''
     });
@@ -417,41 +420,51 @@ function Teachers() {
                 </label>
               </div>
 
-              <label>
-                Teacher Email or Username
-                <input
-                  type="text"
-                  name="email"
-                  required
-                  value={teacherEditFormState.email}
-                  onChange={handleTeacherEditFormInputChange}
-                  placeholder="teacher@school.edu or teacher01"
-                />
-              </label>
-
               <div className="admin-create-teacher-grid">
                 <label>
-                  Password
+                  Teacher Email or Username
                   <input
-                    type="password"
-                    name="password"
+                    type="text"
+                    name="email"
                     required
-                    minLength={8}
-                    value={teacherEditFormState.password}
+                    value={teacherEditFormState.email}
                     onChange={handleTeacherEditFormInputChange}
-                    placeholder="At least 8 characters"
+                    placeholder="teacher@school.edu or teacher01"
                   />
                 </label>
                 <label>
-                  Confirm Password
+                  Old Password
+                  <input
+                    type="password"
+                    name="oldPassword"
+                    value={teacherEditFormState.oldPassword || ''}
+                    onChange={handleTeacherEditFormInputChange}
+                    placeholder="Required if changing password"
+                  />
+                </label>
+              </div>
+
+              <div className="admin-create-teacher-grid">
+                <label>
+                  New Password
+                  <input
+                    type="password"
+                    name="password"
+                    minLength={8}
+                    value={teacherEditFormState.password || ''}
+                    onChange={handleTeacherEditFormInputChange}
+                    placeholder="Leave blank to keep current"
+                  />
+                </label>
+                <label>
+                  Confirm New Password
                   <input
                     type="password"
                     name="confirmPassword"
-                    required
                     minLength={8}
-                    value={teacherEditFormState.confirmPassword}
+                    value={teacherEditFormState.confirmPassword || ''}
                     onChange={handleTeacherEditFormInputChange}
-                    placeholder="Re-enter password"
+                    placeholder="Re-enter new password"
                   />
                 </label>
               </div>
@@ -477,7 +490,7 @@ function Teachers() {
               <span className="admin-management-chip">{teacher.subject}</span>
             </div>
 
-            <p className="admin-management-meta"><BookIcon className="ui-inline-icon" /> Class: <strong>{teacher.className}</strong></p>
+
 
             <div className="admin-management-progress-row">
               <div>

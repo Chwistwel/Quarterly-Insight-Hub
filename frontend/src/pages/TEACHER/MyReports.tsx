@@ -268,34 +268,6 @@ function MyReports() {
 		});
 	}, [reportRows]);
 
-	const summaryOfResults = useMemo(() => {
-		const buckets = {
-			accepted: 0,
-			slightRevision: 0,
-			revision: 0,
-			majorRevision: 0,
-			needMajor: 0,
-			discard: 0
-		};
-
-		reportRows.forEach((row) => {
-			if (row.decision === 'Accepted') buckets.accepted += 1;
-			else if (row.decision === 'Accepted with slight revision') buckets.slightRevision += 1;
-			else if (row.decision === 'Accepted with revision') buckets.revision += 1;
-			else if (row.decision === 'May be accepted with major revision') buckets.majorRevision += 1;
-			else if (row.decision === 'Needs major revision') buckets.needMajor += 1;
-			else buckets.discard += 1;
-		});
-
-		return buckets;
-	}, [reportRows]);
-
-	const topMostLearned = useMemo(() => {
-		return [...entryDrivenRows]
-			.sort((first, second) => second.difficultyIndex - first.difficultyIndex)
-			.slice(0, 10);
-	}, [entryDrivenRows]);
-
 	const topLeastLearned = useMemo(() => {
 		return [...entryDrivenRows]
 			.sort((first, second) => first.difficultyIndex - second.difficultyIndex)
@@ -325,10 +297,6 @@ function MyReports() {
 		() => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
 		[]
 	);
-
-	const handlePrintReport = () => {
-		window.print();
-	};
 
 	const handleDownloadItemAnalysisMatrix = () => {
 		downloadCsvFile(
@@ -572,11 +540,6 @@ function MyReports() {
 						{generatingReport ? 'Generating...' : 'Generate Report'}
 					</button>
 				</article>
-				<article className="reports-action-card blue">
-					<h3>Printable Item Analysis</h3>
-					<p>Open a print-ready layout for formal documentation and records.</p>
-					<button type="button" onClick={handlePrintReport} disabled={!hasReportData}>Print Report</button>
-				</article>
 				<article className="reports-action-card green">
 					<h3>Student Ranking Sheet</h3>
 					<p>Download a ranking list with student averages for your class.</p>
@@ -584,138 +547,7 @@ function MyReports() {
 				</article>
 			</div>
 
-			<section className="teacher-panel printable-report-sheet print-only" aria-label="Printable report layout">
-				<div className="print-report-summary-grid">
-					<div>
-						<p>Total students</p>
-						<strong>{scoreSummary.totalStudents}</strong>
-					</div>
-					<div>
-						<p>Top 27% scorers</p>
-						<strong>{scoreSummary.top27Count}</strong>
-					</div>
-					<div>
-						<p>Lowest 27% scorers</p>
-						<strong>{scoreSummary.top27Count}</strong>
-					</div>
-					<div>
-						<p>Grading period</p>
-						<strong>{(resolvedQuarter || 'FIRST').toUpperCase()}</strong>
-					</div>
-				</div>
-				{scoreSummary.respondentCount !== scoreSummary.totalStudents ? (
-					<p className="teacher-status">
-						Analysis respondents: {scoreSummary.respondentCount} | Enrolled class size: {scoreSummary.totalStudents}
-					</p>
-				) : null}
 
-				<div className="teacher-table-wrap print-report-main-table">
-					<table className="teacher-table print-report-table">
-						<thead>
-							<tr>
-								<th>Item</th>
-								<th>Total Correct</th>
-								<th>Difficulty Index</th>
-								<th>Difficulty Interpretation</th>
-								<th>Discrimination Index</th>
-								<th>Discrimination Interpretation</th>
-								<th>Decision</th>
-							</tr>
-						</thead>
-						<tbody>
-							{reportRows.map((row) => (
-								<tr key={`report-row-${row.itemNo}`}>
-									<td>{row.itemNo}</td>
-									<td>{row.totalCorrect}</td>
-									<td>{row.difficultyIndex.toFixed(2)}</td>
-									<td>{row.difficultyLabel}</td>
-									<td>{row.discriminationIndex.toFixed(2)}</td>
-									<td>{row.discriminationLabel}</td>
-									<td>{row.decision}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-
-				<section className="print-report-result-summary">
-					<h4>Summary of Results</h4>
-					<div className="print-report-result-grid">
-						<p>1. Accepted as is <strong>{summaryOfResults.accepted}</strong></p>
-						<p>2. Accepted with very slight revision <strong>{summaryOfResults.slightRevision}</strong></p>
-						<p>3. Accepted with slight revision <strong>{summaryOfResults.revision}</strong></p>
-						<p>4. May be accepted with minor revision <strong>{summaryOfResults.majorRevision}</strong></p>
-						<p>5. Needs major revision <strong>{summaryOfResults.needMajor}</strong></p>
-						<p>6. Totally discard <strong>{summaryOfResults.discard}</strong></p>
-					</div>
-				</section>
-
-				<section className="print-report-split">
-					<div className="teacher-table-wrap">
-						<h4>Top 10 Most Learned Test Items</h4>
-						{topMostLearned.length ? (
-							<table className="teacher-table print-report-table compact">
-								<thead>
-									<tr>
-										<th>#</th>
-										<th>Item Number</th>
-										<th>Content Area</th>
-									</tr>
-								</thead>
-								<tbody>
-									{topMostLearned.map((row, index) => (
-										<tr key={`most-${row.itemNo}`}>
-											<td>{index + 1}</td>
-											<td>{row.itemNo}</td>
-											<td>{row.contentArea}</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						) : (
-							<p className="teacher-status">No learned-item entries found for this selection.</p>
-						)}
-					</div>
-
-					<div className="teacher-table-wrap">
-						<h4>Top 10 Least Learned Test Items</h4>
-						{topLeastLearned.length ? (
-							<table className="teacher-table print-report-table compact">
-								<thead>
-									<tr>
-										<th>#</th>
-										<th>Item Number</th>
-										<th>Content Area</th>
-										<th>Intervention</th>
-									</tr>
-								</thead>
-								<tbody>
-									{topLeastLearned.map((row, index) => (
-										<tr key={`least-${row.itemNo}`}>
-											<td>{index + 1}</td>
-											<td>{row.itemNo}</td>
-											<td>{row.contentArea}</td>
-											<td>{row.intervention}</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						) : (
-							<p className="teacher-status">No least-learned entries found for this selection.</p>
-						)}
-					</div>
-				</section>
-
-				<footer className="print-report-footer-grid">
-					<div><p>Highest score</p><strong>{scoreSummary.highest.toFixed(1)}</strong></div>
-					<div><p>Lowest score</p><strong>{scoreSummary.lowest.toFixed(1)}</strong></div>
-					<div><p>Mean</p><strong>{reportKpis.meanScore.toFixed(2)}</strong></div>
-					<div><p>MPS</p><strong>{reportKpis.mps.toFixed(2)}%</strong></div>
-					<div><p>Total Score</p><strong>{reportKpis.totalScore.toFixed(0)}</strong></div>
-					<div><p>Passing</p><strong>{scoreSummary.passCount}</strong></div>
-					<div><p>Failing</p><strong>{scoreSummary.failCount}</strong></div>
-				</footer>
-			</section>
 
 			<section className="teacher-panel no-print">
 				<h2>Available Reports</h2>

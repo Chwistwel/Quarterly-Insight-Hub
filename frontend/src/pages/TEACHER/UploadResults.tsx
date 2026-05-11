@@ -147,35 +147,6 @@ function UploadResults() {
 		}
 	};
 
-	const handleDownloadTemplate = () => {
-		const itemColumns = Array.from({ length: 50 }, (_, index) => `Q${index + 1}`);
-		const headers = ['Student ID', 'Student Name', ...itemColumns];
-		const sampleRow = ['2026-0001', 'Sample Student', ...itemColumns.map(() => '1')];
-		const blankRow = ['', '', ...itemColumns.map(() => '')];
-
-		const escapeCsvCell = (value: string) => {
-			const normalized = value.replace(/\r?\n/g, ' ').trim();
-			if (normalized.includes(',') || normalized.includes('"')) {
-				return `"${normalized.replace(/"/g, '""')}"`;
-			}
-			return normalized;
-		};
-
-		const csvRows = [headers, sampleRow, blankRow]
-			.map((row) => row.map(escapeCsvCell).join(','))
-			.join('\n');
-
-		const blob = new Blob([`\uFEFF${csvRows}`], { type: 'text/csv;charset=utf-8;' });
-		const downloadUrl = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = downloadUrl;
-		link.download = 'item-analysis-template.csv';
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(downloadUrl);
-	};
-
 	return (
 		<TeacherLayout title={data?.title ?? 'Upload Quarterly Exam Results'}>
 			<section className="teacher-dash-heading teacher-page-heading">
@@ -279,16 +250,16 @@ function UploadResults() {
 					<div className="upload-instructions-group">
 						<h3>Required Columns</h3>
 						<ul>
-							{(data?.requiredColumns ?? ['Student ID', 'Student Name', 'Item Responses (1-50)', 'Answer Key']).map((column) => (
-								<li key={column}>{column}</li>
-							))}
+							{(data?.requiredColumns ?? ['Student ID', 'Student Name', 'Item Responses (1-50)'])
+								.filter((column) => String(column).trim().toLowerCase() !== 'answer key')
+								.map((column) => (
+									<li key={String(column)}>{column}</li>
+								))}
 						</ul>
+						<p>
+							Tip: You can download the class template from the Classes page — open the desired class and click the <strong>Download Template</strong> button.
+						</p>
 					</div>
-					<div className="upload-instructions-group">
-						<h3>Processing Time</h3>
-						<p>{data?.processingTime ?? 'Analysis typically takes 5-10 minutes depending on the number of students.'}</p>
-					</div>
-					<button type="button" className="teacher-secondary-btn" onClick={handleDownloadTemplate}>Download Template</button>
 				</section>
 			</div>
 

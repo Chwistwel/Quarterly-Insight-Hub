@@ -277,6 +277,18 @@ type TosBlueprintHistoryResponse = {
     history: TosBlueprintHistoryRecord[];
 };
 
+type TosBlueprintOptionsResponse = {
+    combinations: Array<{
+        schoolYear: string;
+        classValue: string;
+        subject: string;
+        quarter: string;
+    }>;
+    classOptions: string[];
+    subjectOptions: string[];
+    quarterOptions: string[];
+};
+
 type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
     role: UserRole;
     user: TUser;
@@ -1458,6 +1470,58 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
             }
         ];
 
+        const studentScores = new Map<string, { totalScorePercentage: number; count: number; name: string }>();
+        const subjectScores = new Map<string, { totalDifficulty: number; count: number }>();
+
+        for (const upload of filteredUploads) {
+            const subject = String(upload.subject ?? '').trim() || 'General';
+            const summary = upload.summary as Record<string, unknown> | undefined;
+            const avgDifficulty = typeof summary?.avgDifficulty === 'number' ? summary.avgDifficulty : 0;
+
+            const existingSubject = subjectScores.get(subject) ?? { totalDifficulty: 0, count: 0 };
+            existingSubject.totalDifficulty += avgDifficulty;
+            existingSubject.count += 1;
+            subjectScores.set(subject, existingSubject);
+
+            const totalItems = Array.isArray(upload.items) ? upload.items.length : 1;
+            const studentResults = upload.studentResults as Array<{ studentName: string; totalScore: number }> | undefined;
+
+            if (Array.isArray(studentResults)) {
+                for (const student of studentResults) {
+                    const name = String(student.studentName ?? '').trim();
+                    if (!name) continue;
+
+                    const scorePercentage = (typeof student.totalScore === 'number' ? student.totalScore : 0) / (totalItems > 0 ? totalItems : 1);
+                    const existingStudent = studentScores.get(name) ?? { totalScorePercentage: 0, count: 0, name };
+                    existingStudent.totalScorePercentage += scorePercentage;
+                    existingStudent.count += 1;
+                    studentScores.set(name, existingStudent);
+                }
+            }
+        }
+
+        const topStudents = Array.from(studentScores.values())
+            .map((s) => {
+                const avgScore = s.totalScorePercentage / s.count;
+                return {
+                    name: s.name,
+                    score: `${(avgScore * 100).toFixed(1)}%`,
+                    improvement: 'Top Performer',
+                    rawValue: avgScore
+                };
+            })
+            .sort((a, b) => b.rawValue - a.rawValue)
+            .slice(0, 10)
+            .map(({ name, score, improvement }) => ({ name, score, improvement }));
+
+        const improvementAreas = Array.from(subjectScores.entries())
+            .map(([area, stats]) => ({
+                area,
+                value: Math.round((stats.totalDifficulty / stats.count) * 100)
+            }))
+            .sort((a, b) => a.value - b.value)
+            .slice(0, 5);
+
         return res.json({
             title: 'Dashboard',
             systemLabel: 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM',
@@ -1473,8 +1537,8 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 ? `Quarterly Performance Trend - ${selectedGrade}`
                 : 'Quarterly Performance Trend - All Assigned Classes',
             highlights: [],
-            topStudents: [],
-            improvementAreas: []
+            topStudents,
+            improvementAreas
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load dashboard data.';
@@ -1862,6 +1926,54 @@ app.get('/teacher/tos', async (req: Request, res: Response) => {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load saved TOS draft.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.get('/teacher/tos/options', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can view saved TOS options.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({
+            message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
+        });
+    }
+
+    try {
+        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const createdBlueprints = await TosBlueprintModel.find({ teacherEmail: normalizedTeacherEmail })
+            .select('schoolYear classValue subject quarter -_id')
+            .lean();
+
+        const combinations = createdBlueprints
+            .map((record) => ({
+                schoolYear: String(record.schoolYear ?? '').trim(),
+                classValue: String(record.classValue ?? '').trim(),
+                subject: String(record.subject ?? '').trim(),
+                quarter: String(record.quarter ?? '').trim()
+            }))
+            .filter((record) => Boolean(record.schoolYear && record.classValue && record.subject && record.quarter));
+
+        const classOptions = Array.from(new Set(combinations.map((record) => record.classValue))).sort();
+        const subjectOptions = Array.from(new Set(combinations.map((record) => record.subject))).sort();
+        const quarterOptions = Array.from(new Set(combinations.map((record) => record.quarter))).sort();
+
+        const payload: TosBlueprintOptionsResponse = {
+            combinations,
+            classOptions,
+            subjectOptions,
+            quarterOptions
+        };
+
+        return res.json(payload);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load saved TOS options.';
         return res.status(500).json({ message });
     }
 });
@@ -4303,10 +4415,11 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
     const requesterRole = req.header('x-user-role');
     const requesterEmail = req.header('x-user-email');
     const { teacherId } = req.params as { teacherId?: string };
-    const { firstName, lastName, email, password, confirmPassword } = req.body as {
+    const { firstName, lastName, email, oldPassword, password, confirmPassword } = req.body as {
         firstName?: string;
         lastName?: string;
         email?: string;
+        oldPassword?: string;
         password?: string;
         confirmPassword?: string;
     };
@@ -4323,16 +4436,16 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'First name, last name, and email/username are required.' });
     }
 
-    if (!password?.trim() || !confirmPassword?.trim()) {
-        return res.status(400).json({ message: 'Password and confirm password are required.' });
-    }
-
-    if (password !== confirmPassword) {
-        return res.status(400).json({ message: 'Passwords do not match.' });
-    }
-
-    if (password.length < 8) {
-        return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    if (password || confirmPassword) {
+        if (!oldPassword?.trim()) {
+            return res.status(400).json({ message: 'Old password is required to change password.' });
+        }
+        if (password !== confirmPassword) {
+            return res.status(400).json({ message: 'Passwords do not match.' });
+        }
+        if (password!.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+        }
     }
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
@@ -4360,12 +4473,18 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
             return res.status(409).json({ message: 'An account with this email/username already exists.' });
         }
 
+        if (password || confirmPassword) {
+            if (!verifyPassword(oldPassword!, existingTeacher.passwordHash)) {
+                return res.status(400).json({ message: 'Old password is incorrect.' });
+            }
+        }
+
         const updatedTeacher: MemoryUser = {
             ...existingTeacher,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: normalizedTeacherEmail,
-            passwordHash: hashPassword(password)
+            ...(password ? { passwordHash: hashPassword(password) } : {})
         };
 
         if (existingKey !== normalizedTeacherEmail) {
@@ -4401,6 +4520,12 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
             return res.status(404).json({ message: 'Teacher account not found.' });
         }
 
+        if (password || confirmPassword) {
+            if (!existingTeacher.passwordHash || !verifyPassword(oldPassword!, existingTeacher.passwordHash)) {
+                return res.status(400).json({ message: 'Old password is incorrect.' });
+            }
+        }
+
         if (normalizeEmail(existingTeacher.email) !== normalizedTeacherEmail) {
             const conflictingUsers = await findDatabaseUsersByEmail(normalizedTeacherEmail);
             const hasConflict = conflictingUsers.some(({ user }) => String(user._id ?? user.id ?? '') !== String(existingTeacher._id ?? ''));
@@ -4410,14 +4535,18 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
             }
         }
 
+        const updateData: Record<string, any> = {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: normalizedTeacherEmail
+        };
+        if (password) {
+            updateData.passwordHash = hashPassword(password);
+        }
+
         const updatedTeacher = await TeacherModel.findByIdAndUpdate(
             teacherId,
-            {
-                firstName: firstName.trim(),
-                lastName: lastName.trim(),
-                email: normalizedTeacherEmail,
-                passwordHash: hashPassword(password)
-            },
+            updateData,
             { new: true }
         ).lean();
 

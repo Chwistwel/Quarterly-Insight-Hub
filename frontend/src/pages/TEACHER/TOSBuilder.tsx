@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NavLink } from 'react-router-dom';
-import { EditIcon, TrashIcon } from '../../components/icons';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { TrashIcon, PlusIcon, EditIcon, CloseIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
 import {
 	deleteTeacherTosHistoryEntry,
 	getTeacherTosBlueprint,
 	getTeacherTosBlueprintHistory,
+	getTeacherTosCreatedOptions,
 	getUploadMetaData,
 	saveTeacherTosBlueprint,
 	type TosBlueprintHistoryEntry,
+	type TosBlueprintOptionsResponse,
 	type TosBlueprintPayload,
 	type UploadMetaResponse
 } from '../../services/teacherPortalApi';
@@ -46,6 +48,45 @@ const DEFAULT_BLOOM_WEIGHTS: Record<BloomKey, number> = {
 };
 
 const STORAGE_KEY = 'teacher-tos-builder-draft';
+
+function normalizeTextToken(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+function normalizeQuarter(value: string): string {
+	const match = value.match(/(\d+)/);
+	if (!match) {
+		return value.trim();
+	}
+
+	const quarterDigits = match[1] ?? '';
+	const quarterNumber = Number.parseInt(quarterDigits, 10);
+	if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) {
+		return value.trim();
+	}
+
+	return `Q${quarterNumber}`;
+}
+
+function buildQuarterDraftStorageKey(classValue: string, subject: string, quarter: string): string {
+	return [
+		STORAGE_KEY,
+		normalizeTextToken(classValue),
+		normalizeTextToken(subject),
+		normalizeQuarter(quarter)
+	].join('::');
+}
+
+function saveBlueprintDraft(blueprintPayload: TosBlueprintPayload): void {
+	localStorage.setItem(STORAGE_KEY, JSON.stringify(blueprintPayload));
+
+	if (blueprintPayload.classValue && blueprintPayload.subject && blueprintPayload.quarter) {
+		localStorage.setItem(
+			buildQuarterDraftStorageKey(blueprintPayload.classValue, blueprintPayload.subject, blueprintPayload.quarter),
+			JSON.stringify(blueprintPayload)
+		);
+	}
+}
 
 function formatSavedAtLabel(savedAt: string): string {
 	const date = new Date(savedAt);
@@ -153,6 +194,11 @@ function applyDaysFromDistribution(rows: TosRow[], totalDays: number): TosRow[] 
 }
 
 function TOSBuilder() {
+	const navigate = useNavigate();
+	const location = useLocation();
+	const locationState = (location.state as {
+		prefill?: Pick<TosBlueprintPayload, 'schoolYear' | 'classValue' | 'subject' | 'quarter'>;
+	} | null) ?? null;
 	const [schoolYear, setSchoolYear] = useState('2025-2026');
 	const [quarter, setQuarter] = useState('1st Quarter');
 	const [subject, setSubject] = useState('');
@@ -171,6 +217,17 @@ function TOSBuilder() {
 	const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 	const [deletingHistoryId, setDeletingHistoryId] = useState<string>('');
 	const [historySortBy, setHistorySortBy] = useState<'date' | 'subject' | 'class'>('date');
+	const [tosCreatedOptions, setTosCreatedOptions] = useState<TosBlueprintOptionsResponse>({
+		combinations: [],
+		classOptions: [],
+		subjectOptions: [],
+		quarterOptions: []
+	});
+	const [landingClass, setLandingClass] = useState('');
+	const [landingSubject, setLandingSubject] = useState('');
+	const [landingQuarter, setLandingQuarter] = useState('');
+	const [landingHistoryCount, setLandingHistoryCount] = useState(0);
+	const isCreatePage = location.pathname.endsWith('/create');
 
 	const sortedHistory = useMemo(() => {
 		const sorted = [...savedHistory];
@@ -258,6 +315,181 @@ function TOSBuilder() {
 			setStatusMessage('Previous draft could not be loaded.');
 		}
 	}, []);
+
+	useEffect(() => {
+		if (!isCreatePage) {
+			return;
+		}
+
+		handleCreateDraft();
+		if (locationState?.prefill) {
+			setSchoolYear(locationState.prefill.schoolYear || '2025-2026');
+			setClassValue(locationState.prefill.classValue || '');
+			setSubject(locationState.prefill.subject || '');
+			setQuarter(locationState.prefill.quarter || '1st Quarter');
+		}
+		// Fresh create pages should always start from a blank builder state.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isCreatePage, locationState]);
+
+	useEffect(() => {
+		if (isCreatePage) {
+			return;
+		}
+
+		const loadCreatedOptions = async () => {
+			const options = await getTeacherTosCreatedOptions();
+			setTosCreatedOptions(options);
+		};
+
+		void loadCreatedOptions();
+	}, [isCreatePage]);
+
+	// If no landing filters are selected, default to the first available saved TOS
+	useEffect(() => {
+		if (isCreatePage) return;
+		if (landingClass || landingSubject || landingQuarter) return; // user already selected
+		const combos = tosCreatedOptions.combinations ?? [];
+		if (!combos.length) return;
+		const first = combos[0];
+		if (!first) return;
+		setLandingClass(first.classValue || '');
+		setLandingSubject(first.subject || '');
+		setLandingQuarter(first.quarter || '');
+	}, [isCreatePage, tosCreatedOptions, landingClass, landingSubject, landingQuarter]);
+
+	const landingSubjectOptions = useMemo(() => {
+		if (!landingClass) {
+			return tosCreatedOptions.subjectOptions;
+		}
+
+		return Array.from(
+			new Set(
+				tosCreatedOptions.combinations
+					.filter((entry) => entry.classValue === landingClass)
+					.map((entry) => entry.subject)
+			)
+		);
+	}, [landingClass, tosCreatedOptions]);
+
+	const landingQuarterOptions = useMemo(() => {
+		return Array.from(
+			new Set(
+				tosCreatedOptions.combinations
+					.filter((entry) => (!landingClass || entry.classValue === landingClass) && (!landingSubject || entry.subject === landingSubject))
+					.map((entry) => entry.quarter)
+			)
+		);
+	}, [landingClass, landingSubject, tosCreatedOptions]);
+
+	const [landingBlueprint, setLandingBlueprint] = useState<TosBlueprintPayload | null>(null);
+	const [loadingLandingBlueprint, setLoadingLandingBlueprint] = useState(false);
+
+	useEffect(() => {
+		let active = true;
+		if (!landingClass || !landingSubject || !landingQuarter) {
+			setLandingBlueprint(null);
+			setLandingHistoryCount(0);
+			return;
+		}
+
+		const load = async () => {
+			setLoadingLandingBlueprint(true);
+			try {
+				const matched = tosCreatedOptions.combinations.find((entry) => (
+					entry.classValue === landingClass && entry.subject === landingSubject && entry.quarter === landingQuarter
+				));
+
+				const schoolYearToUse = matched?.schoolYear || '2025-2026';
+				const query = { schoolYear: schoolYearToUse, classValue: landingClass, subject: landingSubject, quarter: landingQuarter };
+				const [blueprint, history] = await Promise.all([
+					getTeacherTosBlueprint(query),
+					getTeacherTosBlueprintHistory(query)
+				]);
+				if (!active) return;
+				setLandingBlueprint(blueprint ?? null);
+				setLandingHistoryCount(history.length);
+			} catch {
+				if (active) {
+					setLandingBlueprint(null);
+					setLandingHistoryCount(0);
+				}
+			} finally {
+				if (active) setLoadingLandingBlueprint(false);
+			}
+		};
+
+		void load();
+
+		return () => { active = false; };
+	}, [landingClass, landingSubject, landingQuarter, tosCreatedOptions]);
+
+	const handleLandingCreate = () => {
+		navigate('/teacher/tos-builder/create');
+	};
+
+	const handleOpenSaved = () => {
+		const matched = tosCreatedOptions.combinations.find((entry) => (
+			(!landingClass || entry.classValue === landingClass)
+			&& (!landingSubject || entry.subject === landingSubject)
+			&& (!landingQuarter || entry.quarter === landingQuarter)
+		));
+
+		navigate('/teacher/tos-builder/create', {
+			state: {
+				prefill: {
+					schoolYear: matched?.schoolYear || '2025-2026',
+					classValue: landingClass,
+					subject: landingSubject,
+					quarter: landingQuarter || '1st Quarter'
+				}
+			}
+		});
+	};
+
+	const handleToggleBuilderPage = () => {
+		navigate(isCreatePage ? '/teacher/tos-builder' : '/teacher/tos-builder/create');
+	};
+
+	const handleDeleteLandingSaved = async () => {
+		if (!landingClass || !landingSubject || !landingQuarter || !landingBlueprint) {
+			return;
+		}
+
+		const shouldDelete = window.confirm('Delete the latest saved TOS for this class, subject, and quarter?');
+		if (!shouldDelete) {
+			return;
+		}
+
+		setLoadingLandingBlueprint(true);
+		try {
+			const query = { schoolYear: landingBlueprint.schoolYear, classValue: landingClass, subject: landingSubject, quarter: landingQuarter };
+
+			const history = await getTeacherTosBlueprintHistory(query);
+			const latestEntry = [...history].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())[0];
+			if (!latestEntry) {
+				setStatusMessage('No saved TOS version found to delete.');
+				return;
+			}
+
+			await deleteTeacherTosHistoryEntry(latestEntry.id);
+
+			const [nextBlueprint, nextHistory, refreshedOptions] = await Promise.all([
+				getTeacherTosBlueprint(query),
+				getTeacherTosBlueprintHistory(query),
+				getTeacherTosCreatedOptions()
+			]);
+
+			setLandingBlueprint(nextBlueprint ?? null);
+			setLandingHistoryCount(nextHistory.length);
+			setTosCreatedOptions(refreshedOptions);
+			setStatusMessage('Latest saved TOS version deleted.');
+		} catch (error) {
+			setStatusMessage(error instanceof Error ? error.message : 'Unable to delete the saved TOS version.');
+		} finally {
+			setLoadingLandingBlueprint(false);
+		}
+	};
 
 	useEffect(() => {
 		if (!schoolYear || !classValue || !subject || !quarter) {
@@ -351,6 +583,26 @@ function TOSBuilder() {
 	useEffect(() => {
 		setRows((currentRows) => applyDaysFromDistribution(currentRows, totalDays));
 	}, [totalDays]);
+
+	useEffect(() => {
+		if (!isCreatePage) {
+			return;
+		}
+
+		const blueprintPayload: TosBlueprintPayload = {
+			schoolYear,
+			quarter,
+			classValue,
+			subject,
+			totalDays,
+			totalItems,
+			objectiveCount,
+			bloomWeights,
+			rows
+		};
+
+		saveBlueprintDraft(blueprintPayload);
+	}, [isCreatePage, schoolYear, quarter, classValue, subject, totalDays, totalItems, objectiveCount, bloomWeights, rows]);
 
 	const subjectOptions = useMemo(() => {
 		if (!classValue) {
@@ -453,10 +705,7 @@ function TOSBuilder() {
 			rows
 		};
 
-		localStorage.setItem(
-			STORAGE_KEY,
-			JSON.stringify(blueprintPayload)
-		);
+		saveBlueprintDraft(blueprintPayload);
 
 		try {
 			setSavingTos(true);
@@ -510,8 +759,21 @@ function TOSBuilder() {
 		setStatusMessage('TOS table was reset to defaults.');
 	};
 
-	const handleSelectHistoryEntry = (entryId: string) => {
-		setSelectedHistoryId((current) => (current === entryId ? null : entryId));
+	const handleCreateDraft = () => {
+		setSchoolYear('2025-2026');
+		setQuarter('1st Quarter');
+		setSubject('');
+		setClassValue('');
+		setTotalDays(48);
+		setTotalItems(40);
+		setObjectiveCount(8);
+		setRows(buildInitialRows(8));
+		setBloomWeights(DEFAULT_BLOOM_WEIGHTS);
+		setLastSavedAt('');
+		setSavedHistory([]);
+		setSelectedHistoryId(null);
+		setStatusMessage('New TOS draft created.');
+		localStorage.removeItem(STORAGE_KEY);
 	};
 
 	const handleEditHistoryEntry = (entry: TosBlueprintHistoryEntry) => {
@@ -568,19 +830,190 @@ function TOSBuilder() {
 		}
 	};
 
+	if (!isCreatePage) {
+		return (
+			<TeacherLayout title="Table of Specifications">
+				{statusMessage ? <p className="teacher-status">{statusMessage}</p> : null}
+				<section className="teacher-dash-heading teacher-page-heading">
+					<p>TABLE OF SPECIFICATIONS AUTOMATION WORKSPACE</p>
+					<div className="teacher-heading-row teacher-tos-heading-row">
+						<h2>Table of Specifications</h2>
+					<button type="button" className="teacher-pill-btn" onClick={handleLandingCreate}>
+						<PlusIcon className="teacher-btn-icon" />
+						Create
+					</button>
+				</div>
+			</section>
+
+			<div className="teacher-content-toggle-bar teacher-tos-toggle-bar" role="tablist" aria-label="Analysis tools">
+					<NavLink
+						to="/teacher/item-analysis"
+						role="tab"
+						className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+					>
+						Item Analysis
+					</NavLink>
+					<NavLink
+						to="/teacher/tos-builder"
+						role="tab"
+						className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
+					>
+						TOS
+					</NavLink>
+				</div>
+
+				<section className="teacher-filter-row">
+					<select
+						value={landingClass}
+						onChange={(event) => {
+							setLandingClass(event.target.value);
+							setLandingSubject('');
+							setLandingQuarter('');
+						}}
+					>
+						<option value="">Select Class</option>
+						{tosCreatedOptions.classOptions.map((classOption) => (
+							<option key={classOption} value={classOption}>{classOption}</option>
+						))}
+					</select>
+					<select
+						value={landingSubject}
+						onChange={(event) => {
+							setLandingSubject(event.target.value);
+							setLandingQuarter('');
+						}}
+						disabled={!landingClass}
+					>
+						<option value="">Select Subject</option>
+						{landingSubjectOptions.map((subjectOption) => (
+							<option key={subjectOption} value={subjectOption}>{subjectOption}</option>
+						))}
+					</select>
+					<select
+						value={landingQuarter}
+						onChange={(event) => setLandingQuarter(event.target.value)}
+						disabled={!landingSubject}
+					>
+						<option value="">Select Quarter</option>
+						{landingQuarterOptions.map((quarterOption) => (
+							<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
+						))}
+					</select>
+				</section>
+
+				<section className="teacher-panel teacher-tos-landing-panel">
+					{loadingLandingBlueprint ? (
+						<p className="teacher-tos-landing-copy">Loading created TOS...</p>
+					) : landingBlueprint ? (
+						<div style={{ width: '100%' }}>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+								<div>
+									<strong style={{ fontSize: '1rem', color: 'var(--brand)' }}>{landingBlueprint.subject} — {landingBlueprint.classValue}</strong>
+									<div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{landingBlueprint.quarter} • {landingBlueprint.schoolYear}</div>
+								</div>
+
+							</div>
+							<div style={{ display: 'grid', gap: '1rem', marginBottom: '1rem' }}>
+								<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+									<div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', background: 'var(--surface)' }}>
+										<div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Total Days</div>
+										<div style={{ fontSize: '1.2rem', color: 'var(--brand)', fontWeight: 700, marginTop: '0.25rem' }}>{landingBlueprint.totalDays}</div>
+									</div>
+									<div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', background: 'var(--surface)' }}>
+										<div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>No. of Items</div>
+										<div style={{ fontSize: '1.2rem', color: 'var(--brand)', fontWeight: 700, marginTop: '0.25rem' }}>{landingBlueprint.totalItems}</div>
+									</div>
+									<div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', background: 'var(--surface)' }}>
+										<div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Objectives</div>
+										<div style={{ fontSize: '1.2rem', color: 'var(--brand)', fontWeight: 700, marginTop: '0.25rem' }}>{landingBlueprint.objectiveCount}</div>
+									</div>
+									<div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', background: 'var(--surface)' }}>
+										<div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Saved Versions</div>
+										<div style={{ fontSize: '1.2rem', color: 'var(--brand)', fontWeight: 700, marginTop: '0.25rem' }}>{landingHistoryCount}</div>
+									</div>
+								</div>
+							</div>
+							<div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '1rem', background: 'var(--surface)', overflowX: 'auto' }}>
+								<p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}>TOS Matrix (Read-Only)</p>
+								<table style={{ width: '100%', minWidth: '800px', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+									<thead>
+										<tr>
+											<th style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>Topic</th>
+											<th style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>Competency</th>
+											<th style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>Days</th>
+											<th style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>%</th>
+											{BLOOM_ORDER.map((key) => (
+												<th key={key} style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>{BLOOM_LABELS[key]}</th>
+											))}
+											<th style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', background: 'var(--surface-soft)', fontWeight: 700 }}>Total</th>
+										</tr>
+									</thead>
+									<tbody>
+										{landingBlueprint.rows.map((row) => {
+											const rowTotal = BLOOM_ORDER.reduce((sum, key) => sum + (row.counts?.[key] ?? 0), 0);
+											return (
+												<tr key={row.id} style={{ background: row.id % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--surface-soft) 36%, transparent)' }}>
+													<td style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'left', color: 'var(--text-main)' }}>{row.topic || '—'}</td>
+													<td style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'left', color: 'var(--text-main)' }}>{row.competency}</td>
+													<td style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'center', color: 'var(--text-main)' }}>{row.days}</td>
+													<td style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'center', color: 'var(--text-main)' }}>{row.percentage.toFixed(1)}%</td>
+													{BLOOM_ORDER.map((key) => (
+														<td key={key} style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'center', color: 'var(--text-main)' }}>{row.counts?.[key] ?? 0}</td>
+													))}
+													<td style={{ border: '1px solid var(--border)', padding: '0.4rem', textAlign: 'center', fontWeight: 700, color: 'var(--brand)' }}>{rowTotal}</td>
+												</tr>
+											);
+										})}
+									</tbody>
+									<tfoot>
+										<tr style={{ background: 'var(--surface-soft)' }}>
+											<td colSpan={2} style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'right', fontWeight: 700, color: 'var(--text-main)' }}>TOTAL</td>
+											<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--text-main)' }}>{landingBlueprint.rows.reduce((sum, r) => sum + r.days, 0)}</td>
+											<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--text-main)' }}>100%</td>
+											{BLOOM_ORDER.map((key) => {
+												const total = landingBlueprint.rows.reduce((sum, r) => sum + (r.counts?.[key] ?? 0), 0);
+												return (
+													<td key={key} style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--text-main)' }}>{total}</td>
+												);
+											})}
+											<td style={{ border: '1px solid var(--border)', padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--brand)' }}>{landingBlueprint.rows.reduce((sum, r) => sum + BLOOM_ORDER.reduce((bs, k) => bs + (r.counts?.[k] ?? 0), 0), 0)}</td>
+										</tr>
+									</tfoot>
+								</table>
+							</div>
+						</div>
+					) : landingClass && landingSubject && landingQuarter ? (
+						<p className="teacher-tos-landing-copy">
+							No saved TOS found for this class, subject, and quarter. Click Create to build one.
+						</p>
+					) : (
+						<p className="teacher-tos-landing-copy">
+							Select a class, subject, and quarter above, then click Create to open the TOS builder.
+						</p>
+					)}
+				</section>
+			</TeacherLayout>
+		);
+	}
+
 	return (
 		<TeacherLayout title="Table of Specifications">
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>TABLE OF SPECIFICATIONS AUTOMATION WORKSPACE</p>
-				<div className="teacher-heading-row">
+				<div className="teacher-heading-row teacher-tos-heading-row">
 					<h2>Table of Specifications</h2>
-					<span className={`teacher-tos-status ${automatedReadiness ? 'ready' : 'draft'}`}>
-						{automatedReadiness ? 'Ready for Exam Blueprint' : 'Draft in Progress'}
-					</span>
+					<div className="teacher-tos-heading-actions">
+						<span className={`teacher-tos-status ${automatedReadiness ? 'ready' : 'draft'}`}>
+							{automatedReadiness ? 'Ready for Exam Blueprint' : 'Draft in Progress'}
+						</span>
+						<button type="button" className="teacher-icon-btn" onClick={handleToggleBuilderPage} title="Back to TOS overview">
+							<CloseIcon className="teacher-btn-icon" />
+						</button>
+					</div>
 				</div>
 			</section>
 
-			<div className="teacher-content-toggle-bar" role="tablist" aria-label="Analysis tools">
+			<div className="teacher-content-toggle-bar teacher-tos-toggle-bar" role="tablist" aria-label="Analysis tools">
 				<NavLink
 					to="/teacher/item-analysis"
 					role="tab"
@@ -593,7 +1026,7 @@ function TOSBuilder() {
 					role="tab"
 					className={({ isActive }) => `teacher-content-toggle${isActive ? ' active' : ''}`}
 				>
-					TOS Builder
+					TOS
 				</NavLink>
 			</div>
 
@@ -776,7 +1209,7 @@ function TOSBuilder() {
 														updateRow(rowIndex, (current) => ({
 															...current,
 															counts: { ...current.counts, [key]: nextValue }
-															}), true);
+														}), true);
 													}}
 													style={{ width: '40px', textAlign: 'center', border: 'none', background: 'transparent', outline: 'none' }}
 												/>
@@ -808,7 +1241,7 @@ function TOSBuilder() {
 				</div>
 			</section>
 
-			<div className="teacher-tos-bottom-grid">
+			<div className="teacher-tos-bottom-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
 				<section className="teacher-panel teacher-tos-panel-compact">
 					<h2>Cognitive Process Distribution</h2>
 					<div className="teacher-tos-bars">
@@ -827,6 +1260,79 @@ function TOSBuilder() {
 							);
 						})}
 					</div>
+				</section>
+
+				<section className="teacher-panel teacher-tos-panel-compact">
+					<div className="teacher-panel-head">
+						<h2>Saved TOS History</h2>
+						<select
+							value={historySortBy}
+							onChange={(e) => setHistorySortBy(e.target.value as 'date' | 'subject' | 'class')}
+							style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid var(--border)' }}
+						>
+							<option value="date">Sort by Date</option>
+							<option value="subject">Sort by Subject</option>
+							<option value="class">Sort by Class</option>
+						</select>
+					</div>
+
+					{loadingSavedHistory ? (
+						<p className="teacher-status">Loading history...</p>
+					) : sortedHistory.length > 0 ? (
+						<div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '0.5rem', marginTop: '1rem' }}>
+							<ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+								{sortedHistory.map((entry) => (
+									<li
+										key={entry.id}
+										onClick={() => handleEditHistoryEntry(entry)}
+										style={{
+											display: 'flex',
+											justifyContent: 'space-between',
+											alignItems: 'center',
+											padding: '0.75rem 1rem',
+											background: selectedHistoryId === entry.id ? '#eff6ff' : '#f9f9f9',
+											border: selectedHistoryId === entry.id ? '1px solid var(--primary)' : '1px solid var(--border)',
+											borderRadius: '8px',
+											cursor: 'pointer',
+											transition: 'all 0.2s'
+										}}
+									>
+										<div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+											<strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{entry.quarter} &bull; {entry.subject}</strong>
+											<span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{entry.classValue} &bull; {formatSavedAtLabel(entry.savedAt)}</span>
+										</div>
+										<button
+											type="button"
+											title="Delete Saved TOS"
+											onClick={(e) => {
+												e.stopPropagation();
+												void handleDeleteHistoryEntry(entry);
+											}}
+											disabled={deletingHistoryId === entry.id}
+											style={{
+												background: 'transparent',
+												border: 'none',
+												cursor: 'pointer',
+												color: '#ef4444',
+												opacity: deletingHistoryId === entry.id ? 0.5 : 1,
+												padding: '0.25rem',
+												display: 'flex',
+												alignItems: 'center',
+												justifyContent: 'center',
+												borderRadius: '4px'
+											}}
+											onMouseOver={(e) => (e.currentTarget.style.background = '#fee2e2')}
+											onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+										>
+											<TrashIcon className="teacher-btn-icon" />
+										</button>
+									</li>
+								))}
+							</ul>
+						</div>
+					) : (
+						<p className="teacher-status" style={{ marginTop: '1rem' }}>No saved versions found.</p>
+					)}
 				</section>
 			</div>
 
