@@ -1380,9 +1380,13 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
             ? selectedGradeQuery
             : (grades[0] ?? '');
 
-        const selectedQuarter = selectedQuarterQuery && filterQuarterOptions.includes(selectedQuarterQuery)
-            ? selectedQuarterQuery
-            : (filterQuarterOptions[0] ?? '');
+        // Check if quarter parameter was explicitly provided (even if empty = "All Quarters")
+        const hasQuarterParam = 'quarter' in req.query;
+        const selectedQuarter = hasQuarterParam && selectedQuarterQuery === ''
+            ? ''  // Explicitly "All Quarters" selected
+            : (selectedQuarterQuery && filterQuarterOptions.includes(selectedQuarterQuery)
+                ? selectedQuarterQuery
+                : (filterQuarterOptions[0] ?? ''));
 
         const filteredUploads = uploads
             .filter((upload) => (selectedGrade ? String(upload.class ?? '').trim() === selectedGrade : true))
@@ -2443,44 +2447,68 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             teacherEmail: normalizedTeacherEmail
         }).toArray() as Array<Record<string, unknown>>;
 
-        const rankingLookup = new Map<string, number>();
+        // Compute average score for each student across all uploads
+        const studentScores = new Map<string, { totalScorePercentage: number; count: number }>();
 
-        students.forEach((student) => {
-            const classCandidates = buildStudentClassCandidates(student);
-            const subjectToken = normalizeStudentNameForRanking(student.subject);
-            const upload = uploads.find((entry) => {
-                const uploadClass = normalizeStudentNameForRanking(String(entry.class ?? ''));
-                const uploadSubject = normalizeStudentNameForRanking(String(entry.subject ?? ''));
-                return Boolean(uploadClass && uploadSubject && subjectToken && uploadSubject === subjectToken && classCandidates.includes(uploadClass));
-            });
-
-            if (!upload) {
-                rankingLookup.set(student.id, 0);
-                return;
-            }
-
+        for (const upload of uploads) {
+            const items = Array.isArray(upload.items) ? upload.items : [];
+            const totalItems = items.length > 0 ? items.length : 1;
             const studentResults = Array.isArray(upload.studentResults)
                 ? upload.studentResults as Array<Record<string, unknown>>
                 : [];
 
-            const nameCandidates = buildStudentNameCandidates(student);
+            for (const student of students) {
+                const classCandidates = buildStudentClassCandidates(student);
+                const subjectToken = normalizeStudentNameForRanking(student.subject);
+                const uploadClass = normalizeStudentNameForRanking(String(upload.class ?? ''));
+                const uploadSubject = normalizeStudentNameForRanking(String(upload.subject ?? ''));
 
-            const matchedResult = studentResults.find((entry) => {
-                const uploadStudentName = normalizeStudentNameForRanking(String(entry.studentName ?? ''));
-                if (nameCandidates.includes(uploadStudentName)) {
-                    return true;
+                // Check if this upload matches the student's class and subject
+                if (!uploadClass || !uploadSubject || !subjectToken || uploadSubject !== subjectToken || !classCandidates.includes(uploadClass)) {
+                    continue;
                 }
 
-                const uploadedTokens = uploadStudentName.split(' ').filter(Boolean);
-                const studentLastName = normalizeStudentNameForRanking(student.lastName ?? '');
-                return uploadedTokens.length === 1 && studentLastName && uploadedTokens[0] === studentLastName;
-            });
+                const nameCandidates = buildStudentNameCandidates(student);
+                const matchedResult = studentResults.find((entry) => {
+                    const uploadStudentName = normalizeStudentNameForRanking(String(entry.studentName ?? ''));
+                    if (nameCandidates.includes(uploadStudentName)) {
+                        return true;
+                    }
 
-            const rank = typeof matchedResult?.rank === 'number' && Number.isFinite(matchedResult.rank)
-                ? matchedResult.rank
-                : 0;
+                    const uploadedTokens = uploadStudentName.split(' ').filter(Boolean);
+                    const studentLastName = normalizeStudentNameForRanking(student.lastName ?? '');
+                    return uploadedTokens.length === 1 && studentLastName && uploadedTokens[0] === studentLastName;
+                });
 
-            rankingLookup.set(student.id, rank);
+                if (matchedResult) {
+                    const totalScore = typeof matchedResult.totalScore === 'number' ? matchedResult.totalScore : 0;
+                    const scorePercentage = totalScore / totalItems;
+                    const existing = studentScores.get(student.id) ?? { totalScorePercentage: 0, count: 0 };
+                    existing.totalScorePercentage += scorePercentage;
+                    existing.count += 1;
+                    studentScores.set(student.id, existing);
+                }
+            }
+        }
+
+        // Sort students by average score and assign rankings
+        const studentAverages = Array.from(studentScores.entries())
+            .map(([studentId, scores]) => ({
+                studentId,
+                average: scores.count > 0 ? scores.totalScorePercentage / scores.count : 0
+            }))
+            .sort((first, second) => second.average - first.average);
+
+        const rankingLookup = new Map<string, number>();
+        studentAverages.forEach(({ studentId }, index) => {
+            rankingLookup.set(studentId, index + 1);
+        });
+
+        // Students with no scores get rank 0
+        students.forEach((student) => {
+            if (!rankingLookup.has(student.id)) {
+                rankingLookup.set(student.id, 0);
+            }
         });
 
         return rankingLookup;

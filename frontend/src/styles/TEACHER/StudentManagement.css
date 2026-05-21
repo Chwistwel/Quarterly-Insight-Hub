@@ -213,7 +213,7 @@
 	padding: 1rem;
 	border: 1px solid var(--border);
 	border-radius: 14px;
-	background: var(--surface-soft);
+	background: transparent;
 }
 
 .student-analysis-card-head {

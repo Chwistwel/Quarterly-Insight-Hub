@@ -2,18 +2,112 @@
 	min-height: 100vh;
 	width: 100%;
 	max-width: 280px;
-	padding: 1.15rem 0.65rem 0.9rem;
+	padding: 0.9rem 0.65rem;
 	border-right: 1px solid var(--border);
 	background: var(--surface);
 	display: flex;
 	flex-direction: column;
+	position: relative;
+	transition: max-width 0.3s ease, padding 0.3s ease;
+}
+
+.teacher-sidebar.closed {
+	max-width: 80px;
+	padding: 0.75rem 0.35rem;
+}
+
+.teacher-sidebar.closed .teacher-profile-header {
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0 0 0.85rem;
+}
+
+.teacher-sidebar.closed .teacher-profile {
+	justify-content: center;
+}
+
+.teacher-sidebar.closed .teacher-profile > div:last-child {
+	display: none;
+}
+
+.teacher-sidebar.closed .teacher-menu {
+	justify-items: center;
+	gap: 0.5rem;
+}
+
+.teacher-sidebar.closed .teacher-logout {
+	width: 40px;
+	padding: 0;
+	justify-content: center;
+	font-size: 0;
+	gap: 0;
+	align-self: center;
+}
+
+.teacher-sidebar.closed .teacher-logout .layout-logout-icon {
+	margin: 0;
+}
+
+.teacher-sidebar-close {
+	width: 32px;
+	height: 32px;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.2s ease, color 0.2s ease;
+	padding: 0;
+	flex: 0 0 auto;
+}
+
+.teacher-sidebar-close:hover {
+	background: var(--surface-soft);
+	color: var(--brand);
+}
+
+.teacher-sidebar-close-icon {
+	width: 1rem;
+	height: 1rem;
 }
 
 .teacher-workspace {
 	display: grid;
-	grid-template-columns: 280px 1fr;
+	--sidebar-width: 280px;
+	grid-template-columns: var(--sidebar-width) 1fr;
 	min-height: 100vh;
 	background: var(--bg);
+	transition: grid-template-columns 0.2s ease, --sidebar-width 0.2s ease;
+}
+
+.teacher-workspace .teacher-sidebar.closed {
+	grid-column: 1;
+}
+
+.teacher-workspace.sidebar-closed {
+	--sidebar-width: 80px;
+}
+
+/* Defensive: prevent nav/menu items from using absolute positioning that overlays content */
+.teacher-menu-item,
+.teacher-menu-item * {
+	position: relative !important;
+	left: auto !important;
+	right: auto !important;
+	transform: none !important;
+}
+
+/* Ensure main content always respects the grid column and won't be overlapped */
+.teacher-main {
+	z-index: 0;
+}
+.teacher-sidebar {
+	z-index: 1;
 }
 
 .teacher-main {
@@ -45,8 +139,23 @@
 	display: flex;
 	align-items: center;
 	gap: 0.65rem;
+	padding: 0;
+	transition: padding 0.3s ease;
+	min-width: 0;
+}
+
+.teacher-profile-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
 	padding: 0 0.45rem 0.85rem;
 	border-bottom: 1px solid var(--border);
+	min-width: 0;
+}
+
+.teacher-sidebar.closed .teacher-profile-header {
+	padding: 0 0 0.85rem;
 }
 
 .teacher-avatar {
@@ -69,6 +178,9 @@
 	margin: 0;
 	color: var(--brand);
 	font-size: 1.05rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .teacher-profile p {
@@ -98,6 +210,18 @@
 	font-size: 1.02rem;
 	font-weight: 600;
 	cursor: pointer;
+	transition: gap 0.3s ease;
+}
+
+.teacher-sidebar.closed .teacher-menu-item {
+	padding: 0;
+	justify-content: center;
+	gap: 0;
+	width: 40px;
+}
+
+.teacher-sidebar.closed .teacher-menu-item-label {
+	display: none;
 }
 
 .teacher-menu-item:hover {
@@ -706,23 +830,31 @@
 
 @media (max-width: 1100px) {
 	.teacher-workspace {
-		grid-template-columns: 1fr;
+		grid-template-columns: 80px 1fr;
 	}
 
 	.teacher-sidebar {
-		max-width: none;
-		min-height: auto;
-		border-right: 0;
-		border-bottom: 1px solid var(--border);
-		gap: 0.8rem;
+		max-width: 80px;
+		min-height: 100vh;
+		border-right: 1px solid var(--border);
+		border-bottom: 0;
+		gap: 0;
+		padding: 0.75rem 0.35rem;
 	}
 
 	.teacher-menu {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: 1fr;
+		justify-items: center;
 	}
 
 	.teacher-logout {
-		margin-top: 0;
+		margin-top: auto;
+		width: 40px;
+		padding: 0;
+		justify-content: center;
+		font-size: 0;
+		gap: 0;
+		align-self: center;
 	}
 
 	.teacher-main {
@@ -792,6 +924,16 @@
 
 	.teacher-table {
 		min-width: 560px;
+	}
+
+	.teacher-main-header {
+		flex-wrap: wrap;
+		gap: 0.6rem;
+	}
+
+	.teacher-main-actions {
+		width: 100%;
+		justify-content: flex-start;
 	}
 }
 

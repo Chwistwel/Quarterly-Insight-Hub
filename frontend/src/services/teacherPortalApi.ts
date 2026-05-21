@@ -251,7 +251,7 @@ export async function getDashboardData(selectedGrade?: string, selectedQuarter?:
 		if (selectedGrade) {
 			params.set('grade', selectedGrade);
 		}
-		if (selectedQuarter) {
+		if (selectedQuarter !== undefined) {
 			params.set('quarter', selectedQuarter);
 		}
 

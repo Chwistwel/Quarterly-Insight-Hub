@@ -21,7 +21,7 @@ function Dashboard() {
 				const response = await getDashboardData(appliedGrade, appliedQuarter);
 				setData(response);
 				const nextGrade = response.selectedGrade ?? response.filters?.grades?.[0] ?? '';
-				const nextQuarter = response.selectedQuarter ?? response.filters?.quarters?.[0] ?? '';
+				const nextQuarter = response.selectedQuarter !== undefined ? response.selectedQuarter : response.filters?.quarters?.[0] ?? '';
 				setSelectedGrade(nextGrade);
 				setSelectedQuarter(nextQuarter);
 				setAppliedGrade(nextGrade);

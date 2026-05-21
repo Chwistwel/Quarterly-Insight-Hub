@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LogOutIcon, UserIcon } from '../../components/icons';
+import { LogOutIcon, UserIcon, MenuIcon, CloseIcon } from '../../components/icons';
 
 type StoredUserProfile = {
 	firstName?: string;
@@ -51,6 +52,7 @@ type TeacherLayoutProps = {
 };
 
 function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
+	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const storedProfileText = localStorage.getItem('userProfile');
@@ -78,14 +80,24 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	};
 
 	return (
-		<div className="teacher-workspace">
-			<aside className="teacher-sidebar">
-				<div className="teacher-profile">
-					<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
-					<div>
-						<h2>{displayName}</h2>
-						<p>Teacher</p>
+		<div className={`teacher-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
+			<aside className={`teacher-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
+				<div className="teacher-profile-header">
+					<div className="teacher-profile">
+						<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
+						<div>
+							<h2>{displayName}</h2>
+							<p>Teacher</p>
+						</div>
 					</div>
+					<button
+						type="button"
+						className="teacher-sidebar-close"
+						onClick={() => setSidebarOpen(!sidebarOpen)}
+						aria-label="Toggle sidebar"
+					>
+						{sidebarOpen ? <CloseIcon className="teacher-sidebar-close-icon" /> : <MenuIcon className="teacher-sidebar-close-icon" />}
+					</button>
 				</div>
 
 				<nav className="teacher-menu" aria-label="Teacher navigation">
