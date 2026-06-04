@@ -1,16 +1,10 @@
 import express, { type Request, type Response } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import mongoose from 'mongoose';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import Teacher from './models/Teacher.js';
-import Administrator from './models/Administrator.js';
-import ClassSection from './models/ClassSection.js';
-import Student from './models/Student.js';
-import TosBlueprint from './models/TosBlueprint.js';
-import TosBlueprintHistory from './models/TosBlueprintHistory.js';
+import prisma from './lib/prisma.js';
 
 // 1. Load environment variables from .env file
 dotenv.config();
@@ -18,7 +12,7 @@ dotenv.config();
 // 2. Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || '';
+const DATABASE_URL = process.env.DATABASE_URL || '';
 
 // 3. Middleware
 // Allow the frontend to talk to the backend
@@ -221,8 +215,11 @@ type SchoolOverviewResponse = {
 type AdminItemAnalysisRow = {
     itemNo: number;
     difficultyIndex: number;
+    difficultyLabel: string;
     discriminationIndex: number;
+    result: string;
     interpretation: string;
+    decision: string;
     status: 'excellent' | 'good' | 'fair' | 'poor';
 };
 
@@ -231,13 +228,74 @@ type AdminItemAnalysisResponse = {
     classOptions: string[];
     classSubjectMap: Record<string, string[]>;
     subjectOptions: string[];
+    quarterOptions: string[];
     selectedClass: string;
     selectedSubject: string;
+    selectedQuarter: string;
     classAverage: string;
     averageIndex: string;
     totalStudents: number;
     rows: AdminItemAnalysisRow[];
 };
+
+function parseIndexValue(value: string | number): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value > 1 ? value / 100 : value;
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.replace(/%/g, '').trim();
+        const parsed = Number(normalized);
+        if (!Number.isFinite(parsed)) {
+            return null;
+        }
+
+        return parsed > 1 ? parsed / 100 : parsed;
+    }
+
+    return null;
+}
+
+function getDifficultyLevel(value: string | number): 'easy' | 'moderate' | 'difficult' | 'unknown' {
+    const parsedValue = parseIndexValue(value);
+    if (parsedValue === null) {
+        return 'unknown';
+    }
+
+    if (parsedValue >= 0.76) {
+        return 'easy';
+    }
+
+    if (parsedValue >= 0.26) {
+        return 'moderate';
+    }
+
+    return 'difficult';
+}
+
+function getDifficultyLabel(value: string | number): string {
+    const level = getDifficultyLevel(value);
+    if (level === 'easy') return 'Easy';
+    if (level === 'moderate') return 'Moderate';
+    if (level === 'difficult') return 'Difficult';
+    return 'N/A';
+}
+
+function computeDecision(difficultyValue: string | number, discriminationValue: string | number): string {
+    const diff = parseIndexValue(difficultyValue) ?? -1;
+    const disc = parseIndexValue(discriminationValue) ?? -1;
+
+    if (diff < 0 || disc < 0) return 'Totally discard';
+
+    if (diff >= 0.85 && disc >= 0.4) return 'Accepted as it is';
+    if (diff >= 0.7 && disc >= 0.3) return 'Accepted with very slight revision';
+    if (diff >= 0.45 && disc >= 0.2) return 'Accepted with slight revision';
+    if (diff >= 0.2 && disc >= 0.1) return 'May be accepted with minor revision';
+    if (diff >= 0.2 && disc >= 0) return 'Major revision on the stem or choices';
+    if (diff >= 0.05 || disc >= -0.05) return 'Needs major revision or may be discarded';
+
+    return 'Totally discard';
+}
 
 type TosBloomKey = 'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating';
 
@@ -305,10 +363,6 @@ const memoryStudents = new Map<string, MemoryStudent>();
 
 function isSupportedRole(role: unknown): role is UserRole {
     return role === 'teacher' || role === 'administrator';
-}
-
-function getModelByRole(role: UserRole) {
-    return role === 'teacher' ? Teacher : Administrator;
 }
 
 function sanitizeTosNumber(value: unknown): number {
@@ -395,20 +449,13 @@ function normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
 }
 
+let isDatabaseConnected = false;
+prisma.$connect().then(() => { isDatabaseConnected = true; }).catch(() => {});
 function isDatabaseReady(): boolean {
-    return mongoose.connection.readyState === 1;
+    return isDatabaseConnected;
 }
 
 function buildClassLookupFilter(classId: string): Record<string, unknown> {
-    if (mongoose.Types.ObjectId.isValid(classId)) {
-        return {
-            $or: [
-                { _id: new mongoose.Types.ObjectId(classId) },
-                { id: classId }
-            ]
-        };
-    }
-
     return { id: classId };
 }
 
@@ -417,10 +464,11 @@ async function syncClassStudentCountInDatabase(classId: string): Promise<void> {
         return;
     }
 
-    const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-    const StudentModel = Student as mongoose.Model<StudentRecord>;
-    const studentCount = await StudentModel.countDocuments({ classId });
-    await ClassSectionModel.updateOne(buildClassLookupFilter(classId), { $set: { studentCount } });
+    const studentCount = await prisma.student.count({ where: { classId } });
+    await prisma.classSection.updateMany({
+        where: { id: classId },
+        data: { studentCount }
+    });
 }
 
 function getMemoryStoreByRole(role: UserRole): Map<string, MemoryUser> {
@@ -437,23 +485,24 @@ function findMemoryUsersByEmail(normalizedEmail: string): UserLookupResult<Memor
 async function findDatabaseUsersByEmail(normalizedEmail: string): Promise<UserLookupResult[]> {
     const matches: UserLookupResult[] = [];
 
-    await Promise.all(
-        USER_ROLES.map(async (role) => {
-            const UserModel = getModelByRole(role) as mongoose.Model<any>;
-            const user = await UserModel.findOne({ email: normalizedEmail }).lean() as PersistedUser | null;
+    const [teacher, admin] = await Promise.all([
+        prisma.teacher.findFirst({ where: { email: normalizedEmail } }),
+        prisma.administrator.findFirst({ where: { email: normalizedEmail } })
+    ]);
 
-            if (user) {
-                matches.push({ role, user });
-            }
-        })
-    );
+    if (teacher) {
+        matches.push({ role: 'teacher', user: teacher as unknown as PersistedUser });
+    }
+    if (admin) {
+        matches.push({ role: 'administrator', user: admin as unknown as PersistedUser });
+    }
 
     return matches;
 }
 
 function buildAuthUser(role: UserRole, user: PersistedUser) {
     return {
-        id: user._id ?? user.id,
+        id: user.id,
         role,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -463,7 +512,7 @@ function buildAuthUser(role: UserRole, user: PersistedUser) {
 
 function buildTeacherListItem(user: PersistedUser): TeacherListItem {
     return {
-        id: String(user._id ?? user.id ?? user.email),
+        id: String(user.id ?? user.email),
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
@@ -513,7 +562,7 @@ function buildTeacherListWithClassAssignments(
 
 function buildClassListItem(classItem: ClassRecord): ClassListItem {
     return {
-        id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+        id: String(classItem.id ?? `${classItem.className}-${classItem.section}`),
         className: classItem.className,
         gradeLevel: classItem.gradeLevel,
         section: classItem.section,
@@ -567,40 +616,44 @@ function syncMemoryTeacherAssignmentByName(teacherName: string): void {
     assignedTeacher.subject = latestClass.subject;
 }
 
-async function syncDatabaseTeacherAssignmentByName(
-    TeacherModel: mongoose.Model<CredentialUserRecord>,
-    ClassSectionModel: mongoose.Model<ClassRecord>,
-    teacherName: string
-): Promise<void> {
+async function syncDatabaseTeacherAssignmentByName(teacherName: string): Promise<void> {
     const parsedTeacherName = parseTeacherDisplayName(teacherName);
 
     if (!parsedTeacherName.firstName || !parsedTeacherName.lastName) {
         return;
     }
 
-    const teacher = await TeacherModel.findOne({
-        firstName: parsedTeacherName.firstName,
-        lastName: parsedTeacherName.lastName
+    const teacher = await prisma.teacher.findFirst({
+        where: {
+            firstName: parsedTeacherName.firstName,
+            lastName: parsedTeacherName.lastName
+        }
     });
 
     if (!teacher) {
         return;
     }
 
-    const latestClass = await ClassSectionModel.findOne({ teacherName: teacherName.trim() })
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .lean();
+    const latestClass = await prisma.classSection.findFirst({
+        where: { teacherName: teacherName.trim() },
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
+    });
 
     if (!latestClass) {
-        teacher.className = '';
-        teacher.subject = '';
-        await teacher.save();
+        await prisma.teacher.update({
+            where: { id: teacher.id },
+            data: { className: '', subject: '' }
+        });
         return;
     }
 
-    teacher.className = buildClassLabel(latestClass.gradeLevel, latestClass.section);
-    teacher.subject = latestClass.subject;
-    await teacher.save();
+    await prisma.teacher.update({
+        where: { id: teacher.id },
+        data: {
+            className: buildClassLabel(latestClass.gradeLevel, latestClass.section),
+            subject: latestClass.subject
+        }
+    });
 }
 
 function hashPassword(password: string): string {
@@ -943,23 +996,24 @@ function computeItemAnalysis(csvText: string) {
 }
 
 // 4. Database Connection
-if (!MONGO_URI) {
-    console.error("Error: MONGO_URI is not defined in .env file");
+if (!DATABASE_URL) {
+    console.error("Error: DATABASE_URL is not defined in .env file");
     process.exit(1);
 }
 
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
+prisma.$connect()
+    .then(() => console.log('✅ Connected to PostgreSQL'))
+    .catch((err) => console.error('❌ PostgreSQL connection error:', err));
 
 async function fetchCollectionDocument<T>(collectionName: string): Promise<T | null> {
-    const db = mongoose.connection.db;
-
-    if (!db) {
-        return null;
+    switch (collectionName) {
+        case 'teacher_upload_meta':
+            return prisma.teacherUploadMeta.findFirst() as unknown as Promise<T | null>;
+        case 'teacher_reports':
+            return prisma.teacherReport.findFirst() as unknown as Promise<T | null>;
+        default:
+            return null;
     }
-
-    return db.collection(collectionName).findOne({}) as Promise<T | null>;
 }
 
 // 5. Routes
@@ -1149,9 +1203,9 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can create teacher accounts.' });
@@ -1163,15 +1217,17 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
             return res.status(409).json({ message: 'An account with this email/username already exists.' });
         }
 
-        const createdTeacher = await TeacherModel.create({
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            email: normalizedTeacherEmail,
-            passwordHash: hashPassword(password),
-            averageScore: 0,
-            passRate: 0,
-            ...(normalizedSubject ? { subject: normalizedSubject } : {}),
-            ...(normalizedClassName ? { className: normalizedClassName } : {})
+        const createdTeacher = await prisma.teacher.create({
+            data: {
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                email: normalizedTeacherEmail,
+                passwordHash: hashPassword(password),
+                averageScore: 0,
+                passRate: 0,
+                ...(normalizedSubject ? { subject: normalizedSubject } : {}),
+                ...(normalizedClassName ? { className: normalizedClassName } : {})
+            }
         });
 
         return res.status(201).json({
@@ -1322,22 +1378,22 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 };
             });
         } else if (isDatabaseReady()) {
-            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-            const StudentModel = Student as mongoose.Model<StudentRecord>;
-            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+            
+            
+            
+            const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
             if (!teacherAccount) {
                 return res.status(403).json({ message: 'Only valid teachers can view dashboard data.' });
             }
 
             const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
-            const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).lean();
+            const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName } });
 
             assignedClasses = await Promise.all(classRecords.map(async (classItem) => {
-                const classId = String(classItem._id ?? classItem.id ?? '');
+                const classId = String(classItem.id ?? '');
                 const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
-                const studentCount = classId ? await StudentModel.countDocuments({ classId }) : 0;
+                const studentCount = classId ? await prisma.student.count({ where: { classId } }) : 0;
                 return {
                     id: classId,
                     classLabel,
@@ -1345,12 +1401,11 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 };
             }));
 
-            const database = mongoose.connection.db;
-            if (database) {
-                uploads = await database.collection('teacher_item_analysis')
-                    .find({ teacherEmail: normalizedTeacherEmail })
-                    .sort({ timestamp: -1 })
-                    .toArray() as Array<Record<string, unknown>>;
+            if (isDatabaseReady()) {
+                uploads = await prisma.teacherItemAnalysis.findMany({
+                    where: { teacherEmail: normalizedTeacherEmail },
+                    orderBy: { timestamp: 'desc' }
+                }) as unknown as Array<Record<string, unknown>>;
 
                 const quartersFromUploads = Array.from(
                     new Set(
@@ -1562,21 +1617,20 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
     }
 
     try {
-        const db = mongoose.connection.db;
-        if (db) {
+        if (isDatabaseReady()) {
             const normalizedTeacherEmail = normalizeEmail(requesterEmail);
-            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
-            const uploads = await db.collection('teacher_item_analysis')
-                .find({ teacherEmail: normalizedTeacherEmail })
-                .sort({ timestamp: -1 })
-                .toArray() as Array<Record<string, unknown>>;
+            
+            
+            const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
+            const uploads = await prisma.teacherItemAnalysis.findMany({
+                where: { teacherEmail: normalizedTeacherEmail },
+                orderBy: { timestamp: 'desc' }
+            }) as unknown as Array<Record<string, unknown>>;
 
             const teacherDisplayName = teacherAccount ? getTeacherDisplayNameFromUser(teacherAccount) : '';
             const assignedClassName = String(teacherAccount?.className ?? '').trim();
             const classRecords = teacherDisplayName
-                ? await ClassSectionModel.find({ teacherName: teacherDisplayName }).sort({ gradeLevel: 1, section: 1 }).lean()
+                ? await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: { gradeLevel: 'asc', section: 'asc' } })
                 : [];
             const filteredClassRecords = assignedClassName
                 ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
@@ -1629,7 +1683,6 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
             }> = [];
 
             try {
-                const StudentModel = Student as mongoose.Model<PersistedUser>;
                 const classParts = selectedClass.split('-').map((token) => token.trim()).filter(Boolean);
                 const gradeLevel = classParts[0] ?? '';
                 const section = classParts.slice(1).join(' - ');
@@ -1648,19 +1701,19 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
                     studentQuery.subject = selectedSubject;
                 }
 
-                const studentsInClass = await StudentModel.find(studentQuery)
-                    .select('_id name firstName lastName studentNo')
-                    .lean();
+                const studentsInClass = await prisma.student.findMany({
+                    where: studentQuery,
+                    select: { id: true, name: true, firstName: true, lastName: true, studentNo: true }
+                });
 
-                classStudents = studentsInClass.map((student: any) => ({
-                    id: student._id?.toString() ?? '',
+                classStudents = studentsInClass.map((student) => ({
+                    id: student.id ?? '',
                     name: student.name ?? '',
                     firstName: student.firstName ?? '',
                     lastName: student.lastName ?? '',
                     studentNo: typeof student.studentNo === 'string' ? student.studentNo.trim() : ''
                 }));
             } catch {
-                // If fetching students fails, continue without them
                 classStudents = [];
             }
 
@@ -1750,20 +1803,17 @@ app.delete('/teacher/item-analysis', async (req: Request, res: Response) => {
 
     try {
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
-        const db = mongoose.connection.db;
 
-        if (!db) {
-            return res.status(503).json({ message: 'Database is unavailable.' });
-        }
-
-        const result = await db.collection('teacher_item_analysis').deleteOne({
-            teacherEmail: normalizedTeacherEmail,
-            class: classValue,
-            subject,
-            ...(quarter ? { quarter } : {})
+        const result = await prisma.teacherItemAnalysis.deleteMany({
+            where: {
+                teacherEmail: normalizedTeacherEmail,
+                class: classValue,
+                subject,
+                ...(quarter ? { quarter } : {})
+            }
         });
 
-        if (!result.deletedCount) {
+        if (!result.count) {
             return res.status(404).json({ message: 'Item analysis record not found.' });
         }
 
@@ -1829,9 +1879,9 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
             gradeLevels = Array.from(gradeSet);
             subjects = Array.from(subjectSet);
         } else if (isDatabaseReady()) {
-            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+            
+            
+            const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
             if (!teacherAccount) {
                 return res.status(403).json({ message: 'Only valid teachers can view upload metadata.' });
@@ -1839,7 +1889,7 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
 
             const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
             const assignedClassName = String(teacherAccount.className ?? '').trim();
-            const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).lean();
+            const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName } });
             const filteredClassRecords = assignedClassName
                 ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
                 : classRecords;
@@ -1902,8 +1952,8 @@ app.get('/teacher/tos', async (req: Request, res: Response) => {
     }
 
     try {
-        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
-        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        
+        
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
         const filter = {
             teacherEmail: normalizedTeacherEmail,
@@ -1913,13 +1963,13 @@ app.get('/teacher/tos', async (req: Request, res: Response) => {
             subject
         };
 
-        const blueprint = await TosBlueprintModel.findOne(filter).lean();
+        const blueprint = await prisma.tosBlueprint.findFirst({ where: filter });
 
         if (!blueprint) {
             return res.status(404).json({ message: 'No saved TOS draft found.' });
         }
 
-        const historyCount = await TosBlueprintHistoryModel.countDocuments(filter);
+        const historyCount = await prisma.tosBlueprintHistory.count({ where: filter });
 
         return res.json({
             blueprint: {
@@ -1949,11 +1999,12 @@ app.get('/teacher/tos/options', async (req: Request, res: Response) => {
     }
 
     try {
-        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
-        const createdBlueprints = await TosBlueprintModel.find({ teacherEmail: normalizedTeacherEmail })
-            .select('schoolYear classValue subject quarter -_id')
-            .lean();
+        const createdBlueprints = await prisma.tosBlueprint.findMany({
+            where: { teacherEmail: normalizedTeacherEmail },
+            select: { schoolYear: true, classValue: true, subject: true, quarter: true }
+        });
 
         const combinations = createdBlueprints
             .map((record) => ({
@@ -2003,7 +2054,7 @@ app.get('/teacher/tos/history', async (req: Request, res: Response) => {
     }
 
     try {
-        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
         const filter = {
             teacherEmail: normalizedTeacherEmail,
@@ -2013,14 +2064,15 @@ app.get('/teacher/tos/history', async (req: Request, res: Response) => {
             subject
         };
 
-        const history = await TosBlueprintHistoryModel.find(filter)
-            .sort({ version: -1, savedAt: -1 })
-            .lean();
+        const history = await prisma.tosBlueprintHistory.findMany({
+            where: filter,
+            orderBy: [{ version: 'desc' }, { savedAt: 'desc' }]
+        });
 
         return res.json({
             history: history.map((entry) => ({
                 ...entry,
-                id: String(entry._id ?? `${entry.teacherEmail}-${entry.version}`)
+                id: String(entry.id ?? `${entry.teacherEmail}-${entry.version}`)
             }))
         });
     } catch (error) {
@@ -2047,20 +2099,19 @@ app.delete('/teacher/tos/history/:historyId', async (req: Request, res: Response
     }
 
     try {
-        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
-        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
+        
+        
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
 
-        const historyEntry = await TosBlueprintHistoryModel.findOne({
-            _id: historyId,
-            teacherEmail: normalizedTeacherEmail
-        }).lean();
+        const historyEntry = await prisma.tosBlueprintHistory.findFirst({
+            where: { id: historyId, teacherEmail: normalizedTeacherEmail }
+        });
 
         if (!historyEntry) {
             return res.status(404).json({ message: 'TOS history entry not found.' });
         }
 
-        await TosBlueprintHistoryModel.deleteOne({ _id: historyId, teacherEmail: normalizedTeacherEmail });
+        await prisma.tosBlueprintHistory.deleteMany({ where: { id: historyId, teacherEmail: normalizedTeacherEmail } });
 
         const filter = {
             teacherEmail: normalizedTeacherEmail,
@@ -2070,16 +2121,17 @@ app.delete('/teacher/tos/history/:historyId', async (req: Request, res: Response
             subject: historyEntry.subject
         };
 
-        const latestHistory = await TosBlueprintHistoryModel.findOne(filter).sort({ version: -1, savedAt: -1 }).lean();
+        const latestHistory = await prisma.tosBlueprintHistory.findFirst({
+            where: filter,
+            orderBy: [{ version: 'desc' }, { savedAt: 'desc' }]
+        });
 
-        await TosBlueprintModel.updateOne(
-            filter,
-            {
-                $set: {
-                    latestHistoryVersion: latestHistory?.version ?? 0
-                }
+        await prisma.tosBlueprint.updateMany({
+            where: filter,
+            data: {
+                latestHistoryVersion: latestHistory?.version ?? 0
             }
-        );
+        });
 
         return res.json({ message: 'TOS history entry deleted.' });
     } catch (error) {
@@ -2101,8 +2153,8 @@ app.post('/teacher/tos', async (req: Request, res: Response) => {
     }
 
     try {
-        const TosBlueprintModel = TosBlueprint as mongoose.Model<TosBlueprintRecord>;
-        const TosBlueprintHistoryModel = TosBlueprintHistory as mongoose.Model<TosBlueprintHistoryRecord>;
+        
+        
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
         const record = normalizeTosRecord(req.body, normalizedTeacherEmail);
         const validationError = validateTosRecord(record);
@@ -2119,28 +2171,36 @@ app.post('/teacher/tos', async (req: Request, res: Response) => {
             subject: record.subject
         };
 
-        const current = await TosBlueprintModel.findOne(filter).lean();
+        const current = await prisma.tosBlueprint.findFirst({ where: filter });
         const nextVersion = (current?.latestHistoryVersion ?? 0) + 1;
         const savedAt = new Date();
 
-        await TosBlueprintModel.updateOne(
-            filter,
-            {
-                $set: {
+        if (current) {
+            await prisma.tosBlueprint.update({
+                where: { id: current.id },
+                data: {
                     ...record,
                     latestHistoryVersion: nextVersion
                 }
-            },
-            { upsert: true }
-        );
+            });
+        } else {
+            await prisma.tosBlueprint.create({
+                data: {
+                    ...record,
+                    latestHistoryVersion: nextVersion
+                }
+            });
+        }
 
-        await TosBlueprintHistoryModel.create({
-            ...record,
-            version: nextVersion,
-            savedAt: savedAt.toISOString()
+        await prisma.tosBlueprintHistory.create({
+            data: {
+                ...record,
+                version: nextVersion,
+                savedAt: savedAt.toISOString()
+            }
         });
 
-        const historyCount = await TosBlueprintHistoryModel.countDocuments(filter);
+        const historyCount = await prisma.tosBlueprintHistory.count({ where: filter });
 
         return res.json({
             message: 'TOS saved successfully.',
@@ -2231,10 +2291,10 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
     }
 
     try {
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can view assigned classes.' });
@@ -2242,32 +2302,29 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
 
         const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
         const assignedClassName = String(teacherAccount.className ?? '').trim();
-        const classRecords = await ClassSectionModel.find({ teacherName: teacherDisplayName }).sort({ gradeLevel: 1, section: 1 }).lean();
+        const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: { gradeLevel: 'asc', section: 'asc' } });
         const filteredClassRecords = assignedClassName
             ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
             : classRecords;
-        const classIds = filteredClassRecords.map((classItem) => String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`));
-        const studentCounts = await StudentModel.aggregate<{ _id: string; count: number }>([
-            {
-                $match: {
-                    teacherEmail: normalizedTeacherEmail,
-                    classId: { $in: classIds }
-                }
+        const classIds = filteredClassRecords.map((classItem) => String(classItem.id ?? `${classItem.className}-${classItem.section}`));
+        const studentsForCount = await prisma.student.findMany({
+            where: {
+                teacherEmail: normalizedTeacherEmail,
+                classId: { in: classIds }
             },
-            {
-                $group: {
-                    _id: '$classId',
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
-        const studentCountMap = new Map(studentCounts.map((item) => [item._id, item.count]));
+            select: { classId: true }
+        });
+        const studentCountMap = new Map<string, number>();
+        for (const student of studentsForCount) {
+            const count = studentCountMap.get(student.classId) ?? 0;
+            studentCountMap.set(student.classId, count + 1);
+        }
 
         const classes = filteredClassRecords.map((classItem) => {
-            const classId = String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`);
+            const classId = String(classItem.id ?? `${classItem.className}-${classItem.section}`);
 
             return {
-            id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+            id: String(classItem.id ?? `${classItem.className}-${classItem.section}`),
             grade: classItem.gradeLevel,
             section: classItem.section,
             subject: classItem.subject,
@@ -2305,16 +2362,16 @@ app.delete('/teacher/my-classes/:classId', async (req: Request, res: Response) =
 
     try {
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can delete assigned classes.' });
         }
 
-        const classRecord = await ClassSectionModel.findById(classId).lean();
+        const classRecord = await prisma.classSection.findUnique({ where: { id: classId } });
         if (!classRecord) {
             return res.status(404).json({ message: 'Class record not found.' });
         }
@@ -2324,13 +2381,8 @@ app.delete('/teacher/my-classes/:classId', async (req: Request, res: Response) =
             return res.status(403).json({ message: 'You can only delete your assigned classes.' });
         }
 
-        const db = mongoose.connection.db;
-        if (!db) {
-            return res.status(503).json({ message: 'Database is unavailable.' });
-        }
-
-        await ClassSectionModel.deleteOne({ _id: classId });
-        await StudentModel.deleteMany({ classId, teacherEmail: normalizedTeacherEmail });
+        await prisma.classSection.deleteMany({ where: { id: classId } });
+        await prisma.student.deleteMany({ where: { classId, teacherEmail: normalizedTeacherEmail } });
 
         const classCandidates = Array.from(new Set([
             classRecord.className,
@@ -2340,10 +2392,12 @@ app.delete('/teacher/my-classes/:classId', async (req: Request, res: Response) =
         ].map((value) => String(value ?? '').trim()).filter((value) => value.length > 0)));
 
         if (classCandidates.length > 0) {
-            await db.collection('teacher_item_analysis').deleteMany({
-                teacherEmail: normalizedTeacherEmail,
-                subject: classRecord.subject,
-                class: { $in: classCandidates }
+            await prisma.teacherItemAnalysis.deleteMany({
+                where: {
+                    teacherEmail: normalizedTeacherEmail,
+                    subject: classRecord.subject,
+                    class: { in: classCandidates }
+                }
             });
         }
 
@@ -2438,14 +2492,9 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
         section?: string;
         subject: string;
     }>) => {
-        const db = mongoose.connection.db;
-        if (!db) {
-            return new Map<string, number>();
-        }
-
-        const uploads = await db.collection('teacher_item_analysis').find({
-            teacherEmail: normalizedTeacherEmail
-        }).toArray() as Array<Record<string, unknown>>;
+        const uploads = await prisma.teacherItemAnalysis.findMany({
+            where: { teacherEmail: normalizedTeacherEmail }
+        }) as unknown as Array<Record<string, unknown>>;
 
         // Compute average score for each student across all uploads
         const studentScores = new Map<string, { totalScorePercentage: number; count: number }>();
@@ -2598,10 +2647,10 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
     }
 
     try {
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can view student records.' });
@@ -2612,10 +2661,10 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             filter.classId = classId;
         }
 
-        const studentRecords = await StudentModel.find(filter).sort({ name: 1 }).lean();
+        const studentRecords = await prisma.student.findMany({ where: filter, orderBy: { name: 'asc' } });
         const students = studentRecords.map((student) => ({
             ...parseNameParts(student.name),
-            id: String(student._id ?? student.id ?? `${student.classId}-${student.name}`),
+            id: String(student.id ?? `${student.classId}-${student.name}`),
             studentNo: typeof student.studentNo === 'string' ? student.studentNo.trim() : '',
             name: student.name,
             gender: student.gender ?? '',
@@ -2639,7 +2688,7 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
 
         let classLabel = 'All Classes';
         if (classId) {
-            const classRecord = await ClassSectionModel.findOne({ _id: classId }).lean();
+            const classRecord = await prisma.classSection.findFirst({ where: { id: classId } });
             if (classRecord) {
                 classLabel = `${classRecord.gradeLevel} - ${classRecord.section} (${classRecord.subject})`;
             }
@@ -2762,16 +2811,16 @@ app.post('/teacher/students', async (req: Request, res: Response) => {
     }
 
     try {
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can add students.' });
         }
 
-        const classRecord = await ClassSectionModel.findOne(buildClassLookupFilter(classId)).lean();
+        const classRecord = await prisma.classSection.findFirst({ where: buildClassLookupFilter(classId) });
         if (!classRecord) {
             return res.status(404).json({ message: 'Class not found.' });
         }
@@ -2781,21 +2830,23 @@ app.post('/teacher/students', async (req: Request, res: Response) => {
             return res.status(403).json({ message: 'You can only add students to your assigned class.' });
         }
 
-        const createdStudent = await StudentModel.create({
-            classId,
-            teacherEmail: normalizedTeacherEmail,
-            name: normalizedName,
-            firstName: nameParts.firstName,
-            middleInitial: nameParts.middleInitial,
-            lastName: nameParts.lastName,
-            gender: normalizedGender,
-            grade: classRecord.gradeLevel,
-            section: classRecord.section,
-            subject: classRecord.subject,
-            q1Score: 0,
-            q2Score: 0,
-            q3Score: 0,
-            q4Score: 0
+        const createdStudent = await prisma.student.create({
+            data: {
+                classId,
+                teacherEmail: normalizedTeacherEmail,
+                name: normalizedName,
+                firstName: nameParts.firstName,
+                middleInitial: nameParts.middleInitial,
+                lastName: nameParts.lastName,
+                gender: normalizedGender,
+                grade: classRecord.gradeLevel,
+                section: classRecord.section,
+                subject: classRecord.subject,
+                q1Score: 0,
+                q2Score: 0,
+                q3Score: 0,
+                q4Score: 0
+            }
         });
 
         await syncClassStudentCountInDatabase(classId);
@@ -2803,7 +2854,7 @@ app.post('/teacher/students', async (req: Request, res: Response) => {
         return res.status(201).json({
             message: 'Student added successfully.',
             student: {
-                id: String(createdStudent._id),
+                id: String(createdStudent.id),
                 classId,
                 name: createdStudent.name,
                 firstName: createdStudent.firstName,
@@ -3029,16 +3080,16 @@ app.post('/teacher/students/upload-class-list', upload.single('file'), async (re
             });
         }
 
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can upload class lists.' });
         }
 
-        const classRecord = await ClassSectionModel.findOne(buildClassLookupFilter(classId)).lean();
+        const classRecord = await prisma.classSection.findFirst({ where: buildClassLookupFilter(classId) });
         if (!classRecord) {
             return res.status(404).json({ message: 'Class not found.' });
         }
@@ -3048,10 +3099,10 @@ app.post('/teacher/students/upload-class-list', upload.single('file'), async (re
             return res.status(403).json({ message: 'You can only upload class lists to your assigned class.' });
         }
 
-        const existingStudents = await StudentModel.find({
-            teacherEmail: normalizedTeacherEmail,
-            classId
-        }).select({ firstName: 1, lastName: 1, studentNo: 1 }).lean();
+        const existingStudents = await prisma.student.findMany({
+            where: { teacherEmail: normalizedTeacherEmail, classId },
+            select: { firstName: true, lastName: true, studentNo: true }
+        });
 
         const existingKeys = new Set(existingStudents.map((student) => `${(student.firstName ?? '').trim().toLowerCase()}::${(student.lastName ?? '').trim().toLowerCase()}`));
         const existingStudentNos = existingStudents
@@ -3091,7 +3142,7 @@ app.post('/teacher/students/upload-class-list', upload.single('file'), async (re
         }
 
         if (documentsToInsert.length > 0) {
-            await StudentModel.insertMany(documentsToInsert, { ordered: false });
+            await prisma.student.createMany({ data: documentsToInsert });
             await syncClassStudentCountInDatabase(classId);
         }
 
@@ -3192,34 +3243,31 @@ app.put('/teacher/students/:studentId', async (req: Request, res: Response) => {
     }
 
     try {
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can update students.' });
         }
 
-        const existingStudent = await StudentModel.findById(studentId).lean();
+        const existingStudent = await prisma.student.findUnique({ where: { id: studentId } });
         if (!existingStudent || normalizeEmail(existingStudent.teacherEmail) !== normalizedTeacherEmail) {
             return res.status(404).json({ message: 'Student not found.' });
         }
 
-        await StudentModel.updateOne(
-            { _id: studentId },
-            {
-                $set: {
-                    name: normalizedName,
-                    firstName: firstName.trim(),
-                    middleInitial: normalizedMiddleInitial,
-                    lastName: lastName.trim(),
-                    gender: normalizedGender,
-                    q1Score: normalizedQ1,
-                    q2Score: normalizedQ2,
-                    q3Score: normalizedQ3,
-                    q4Score: normalizedQ4
-                }
-            }
+        await prisma.student.updateMany(
+            { where: { id: studentId }, data: {
+                name: normalizedName,
+                firstName: firstName.trim(),
+                middleInitial: normalizedMiddleInitial,
+                lastName: lastName.trim(),
+                gender: normalizedGender,
+                q1Score: normalizedQ1,
+                q2Score: normalizedQ2,
+                q3Score: normalizedQ3,
+                q4Score: normalizedQ4
+            } }
         );
 
         return res.json({ message: 'Student updated successfully.' });
@@ -3251,20 +3299,20 @@ app.delete('/teacher/students/:studentId', async (req: Request, res: Response) =
     }
 
     try {
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+        
+        
+        const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
         if (!teacherAccount) {
             return res.status(403).json({ message: 'Only valid teachers can delete students.' });
         }
 
-        const existingStudent = await StudentModel.findById(studentId).lean();
+        const existingStudent = await prisma.student.findUnique({ where: { id: studentId } });
         if (!existingStudent || normalizeEmail(existingStudent.teacherEmail) !== normalizedTeacherEmail) {
             return res.status(404).json({ message: 'Student not found.' });
         }
 
-        await StudentModel.deleteOne({ _id: studentId });
+        await prisma.student.deleteMany({ where: { id: studentId } });
         await syncClassStudentCountInDatabase(existingStudent.classId);
 
         return res.json({ message: 'Student deleted successfully.' });
@@ -3320,8 +3368,7 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
         const analysis = computeItemAnalysis(csvText);
 
         // Store the analysis with teacher and class info
-        const db = mongoose.connection.db;
-        if (db && classValue && subject && requesterEmail) {
+        if (classValue && subject && requesterEmail) {
             const normalizedTeacherEmail = normalizeEmail(requesterEmail);
             const normalizedQuarter = String(quarter ?? '').trim();
             const normalizeName = (value: string): string => value
@@ -3339,37 +3386,39 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                 return { gradeLevel: value.trim(), section: '' };
             };
 
-            const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-            const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-            const StudentModel = Student as mongoose.Model<StudentRecord>;
-            const teacherAccount = await TeacherModel.findOne({ email: normalizedTeacherEmail }).lean();
+            
+            
+            
+            const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
 
             let resolvedClassId = classValue;
             if (teacherAccount) {
                 const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
-                let classRecord = mongoose.Types.ObjectId.isValid(classValue)
-                    ? await ClassSectionModel.findOne({ _id: classValue }).lean()
-                    : null;
+                let classRecord = await prisma.classSection.findFirst({ where: { id: classValue } });
 
                 if (!classRecord) {
                     const parsedClass = parseClassLabel(classValue);
-                    classRecord = await ClassSectionModel.findOne({
-                        gradeLevel: parsedClass.gradeLevel,
-                        section: parsedClass.section,
-                        subject,
-                        teacherName: teacherDisplayName
-                    }).lean();
+                    classRecord = await prisma.classSection.findFirst({
+                        where: {
+                            gradeLevel: parsedClass.gradeLevel,
+                            section: parsedClass.section,
+                            subject,
+                            teacherName: teacherDisplayName
+                        }
+                    });
                 }
 
                 if (classRecord) {
-                    resolvedClassId = String(classRecord._id ?? classRecord.id ?? classValue);
+                    resolvedClassId = String(classRecord.id ?? classValue);
                 }
             }
 
-            const studentsInClass = await StudentModel.find({
-                teacherEmail: normalizedTeacherEmail,
-                classId: resolvedClassId
-            }).lean();
+            const studentsInClass = await prisma.student.findMany({
+                where: {
+                    teacherEmail: normalizedTeacherEmail,
+                    classId: resolvedClassId
+                }
+            });
 
             const studentsByFullName = new Map<string, StudentRecord>();
             const studentsByLastName = new Map<string, StudentRecord[]>();
@@ -3403,7 +3452,7 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                     uploadedStudentName: uploadedName,
                     rank: result.rank,
                     totalScore: result.totalScore,
-                    matchedStudentId: matchedStudent?._id ? String(matchedStudent._id) : null,
+                    matchedStudentId: matchedStudent?.id ? String(matchedStudent.id) : null,
                     matchedFirstName: matchedStudent?.firstName ?? null,
                     matchedLastName: matchedStudent?.lastName ?? null,
                     matchType
@@ -3419,11 +3468,20 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                 studentIdentityLinks,
                 ...analysis
             };
-            await db.collection('teacher_item_analysis').updateOne(
-                { class: classValue, subject, quarter: normalizedQuarter, teacherEmail: requesterEmail },
-                { $set: analysisData },
-                { upsert: true }
-            );
+            const existingAnalysis = await prisma.teacherItemAnalysis.findFirst({
+                where: { class: classValue, subject, quarter: normalizedQuarter, teacherEmail: requesterEmail }
+            });
+
+            if (existingAnalysis) {
+                await prisma.teacherItemAnalysis.update({
+                    where: { id: existingAnalysis.id },
+                    data: analysisData as any
+                });
+            } else {
+                await prisma.teacherItemAnalysis.create({
+                    data: analysisData as any
+                });
+            }
 
             // Update student rankings using matched student identities and compact ranks to avoid gaps.
             const matchedRankingLinks = studentIdentityLinks
@@ -3445,9 +3503,8 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
 
             const rankingUpdates = Array.from(compactRankByStudentId.entries())
                 .map(([studentId, compactRank]) => {
-                    return StudentModel.updateOne(
-                        { _id: studentId },
-                        { $set: { ranking: compactRank } }
+                    return prisma.student.updateMany(
+                        { where: { id: studentId }, data: { ranking: compactRank } }
                     );
                 });
 
@@ -3689,20 +3746,20 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can view school overview analytics.' });
         }
 
-        const teachers = await TeacherModel.find({}).sort({ lastName: 1, firstName: 1 }).lean();
-        const classRecords = await ClassSectionModel.find({}).lean();
+        const teachers = await prisma.teacher.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
+        const classRecords = await prisma.classSection.findMany();
         const classes = classRecords.map((classItem) => ({
-            id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+            id: String(classItem.id ?? `${classItem.className}-${classItem.section}`),
             classLabel: buildClassLabel(classItem.gradeLevel, classItem.section),
             gradeLevel: classItem.gradeLevel,
             section: classItem.section,
@@ -3711,73 +3768,118 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
         }));
 
         const classIds = classes.map((classItem) => classItem.id);
-        const classPerformanceAggregate = await StudentModel.aggregate<{
-            _id: string;
-            studentCount: number;
-            totalAverage: number;
-            passCount: number;
-        }>([
-            {
-                $match: {
-                    classId: { $in: classIds }
-                }
-            },
-            {
-                $addFields: {
-                    studentAverage: {
-                        $avg: [
-                            { $ifNull: ['$q1Score', 0] },
-                            { $ifNull: ['$q2Score', 0] },
-                            { $ifNull: ['$q3Score', 0] },
-                            { $ifNull: ['$q4Score', 0] }
-                        ]
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: '$classId',
-                    studentCount: { $sum: 1 },
-                    totalAverage: { $sum: '$studentAverage' },
-                    passCount: {
-                        $sum: {
-                            $cond: [{ $gte: ['$studentAverage', 75] }, 1, 0]
-                        }
-                    }
-                }
+        const allStudents = await prisma.student.findMany({
+            where: { classId: { in: classIds } },
+            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
+        });
+
+        const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
+        for (const student of allStudents) {
+            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
+            const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
+            entry.studentCount += 1;
+            entry.totalAverage += studentAverage;
+            if (studentAverage >= 75) {
+                entry.passCount += 1;
             }
-        ]);
+            classPerformanceMap.set(student.classId, entry);
+        }
 
         const classPerformanceById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const classMetric of classPerformanceAggregate) {
-            const studentCount = classMetric.studentCount;
-            classPerformanceById.set(classMetric._id, {
-                studentCount,
-                avgScore: studentCount ? classMetric.totalAverage / studentCount : 0,
-                passRate: studentCount ? (classMetric.passCount / studentCount) * 100 : 0
+        for (const [classId, metric] of classPerformanceMap) {
+            classPerformanceById.set(classId, {
+                studentCount: metric.studentCount,
+                avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
+                passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
             });
         }
 
         let classLabelsInQuarter: Set<string> | undefined;
 
         if (selectedQuarter && selectedQuarter !== 'All Quarters') {
-            const database = mongoose.connection.db;
+            const uploads = await prisma.teacherItemAnalysis.findMany({
+                where: { quarter: selectedQuarter },
+                select: { class: true }
+            }) as unknown as Array<{ class?: string }>;
 
-            if (database) {
-                const uploads = await database.collection('teacher_item_analysis')
-                    .find(
-                        { quarter: selectedQuarter },
-                        { projection: { class: 1 } }
-                    )
-                    .toArray() as Array<{ class?: string }>;
+            classLabelsInQuarter = new Set(
+                uploads
+                    .map((upload) => upload.class?.trim() ?? '')
+                    .filter((value) => value.length > 0)
+            );
+        }
 
-                classLabelsInQuarter = new Set(
-                    uploads
-                        .map((upload) => upload.class?.trim() ?? '')
-                        .filter((value) => value.length > 0)
-                );
-            } else {
-                classLabelsInQuarter = new Set();
+        // If a specific quarter is requested, try to compute class-level averages
+        // from uploaded `teacher_item_analysis` documents so admin charts reflect
+        // recent uploads even when Student.q1..q4 fields are not populated.
+        if (selectedQuarter && selectedQuarter !== 'All Quarters') {
+            try {
+                const uploads = await prisma.teacherItemAnalysis.findMany({
+                    where: { quarter: selectedQuarter }
+                }) as unknown as Array<Record<string, unknown>>;
+
+                const uploadsByClass = new Map<string, Array<Record<string, unknown>>>();
+                for (const up of uploads) {
+                    const classLabel = String(up.class ?? '').trim();
+                    if (!classLabel) continue;
+                    const arr = uploadsByClass.get(classLabel) ?? [];
+                    arr.push(up);
+                    uploadsByClass.set(classLabel, arr);
+                }
+
+                for (const cls of classes) {
+                    const classLabel = cls.classLabel;
+                    const classUploads = uploadsByClass.get(classLabel) ?? [];
+                    if (classUploads.length === 0) continue;
+
+                    const studentsInClass = await prisma.student.findMany({ where: { classId: cls.id } });
+                    const normalizeName = (value: string) => String(value ?? '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+                    const studentsByNormalized = new Map<string, any[]>();
+                    for (const s of studentsInClass) {
+                        const key = normalizeName(s.name ?? `${s.firstName ?? ''} ${s.lastName ?? ''}`);
+                        const arr = studentsByNormalized.get(key) ?? [];
+                        arr.push(s);
+                        studentsByNormalized.set(key, arr);
+                    }
+
+                    const studentAgg = new Map<string, { totalPercent: number; count: number }>();
+
+                    for (const up of classUploads) {
+                        const items = Array.isArray(up.items) ? up.items : [];
+                        const totalItems = items.length > 0 ? items.length : 1;
+                        const studentResults = Array.isArray(up.studentResults) ? up.studentResults as Array<Record<string, unknown>> : [];
+
+                        for (const r of studentResults) {
+                            const uploadedName = String(r.studentName ?? '').trim();
+                            const norm = normalizeName(uploadedName);
+                            const matched = studentsByNormalized.get(norm) ?? [];
+                            const student = matched[0];
+                            const percent = (typeof r.totalScore === 'number' ? (Number(r.totalScore) / totalItems) * 100 : 0);
+                            if (student && student.id) {
+                                const id = String(student.id);
+                                const existing = studentAgg.get(id) ?? { totalPercent: 0, count: 0 };
+                                existing.totalPercent += percent;
+                                existing.count += 1;
+                                studentAgg.set(id, existing);
+                            }
+                        }
+                    }
+
+                    const studentAverages = Array.from(studentAgg.values()).map((v) => (v.count ? v.totalPercent / v.count : 0));
+                    if (studentAverages.length === 0) continue;
+
+                    const classAvg = studentAverages.reduce((s, v) => s + v, 0) / studentAverages.length;
+                    const passing = studentAverages.filter((v) => v >= 75).length;
+                    const passRate = (studentAverages.length > 0) ? (passing / studentAverages.length) * 100 : 0;
+
+                    classPerformanceById.set(cls.id, {
+                        studentCount: studentsInClass.length,
+                        avgScore: classAvg,
+                        passRate
+                    });
+                }
+            } catch (e) {
+                // fail silently and fall back to existing classPerformanceById
             }
         }
 
@@ -3833,7 +3935,7 @@ app.get('/api/admin/teacher-performance', async (req: Request, res: Response) =>
                     : 'Delayed';
 
                 return {
-                    id: String(teacher._id ?? teacher.id ?? normalizedTeacherEmail),
+                    id: String(teacher.id ?? normalizedTeacherEmail),
                     name: teacherName || normalizedTeacherEmail,
                     subject: rowSubject,
                     classes: classCount,
@@ -3941,87 +4043,60 @@ app.get('/api/admin/teacher-performance', async (req: Request, res: Response) =>
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can view teacher performance analytics.' });
         }
 
-        const teacherRecords = await TeacherModel.find({}).sort({ lastName: 1, firstName: 1 }).lean();
-        const classRecords = await ClassSectionModel.find({}).lean();
+        const teacherRecords = await prisma.teacher.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
+        const classRecords = await prisma.classSection.findMany();
         const classes = classRecords.map((classItem) => ({
-            id: String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`),
+            id: String(classItem.id ?? `${classItem.className}-${classItem.section}`),
             teacherName: classItem.teacherName,
             subject: classItem.subject
         }));
         const classIds = classes.map((classItem) => classItem.id);
-        const classPerformanceAggregate = await StudentModel.aggregate<{
-            _id: string;
-            studentCount: number;
-            totalAverage: number;
-            passCount: number;
-        }>([
-            {
-                $match: {
-                    classId: { $in: classIds }
-                }
-            },
-            {
-                $addFields: {
-                    studentAverage: {
-                        $avg: [
-                            { $ifNull: ['$q1Score', 0] },
-                            { $ifNull: ['$q2Score', 0] },
-                            { $ifNull: ['$q3Score', 0] },
-                            { $ifNull: ['$q4Score', 0] }
-                        ]
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: '$classId',
-                    studentCount: { $sum: 1 },
-                    totalAverage: { $sum: '$studentAverage' },
-                    passCount: {
-                        $sum: {
-                            $cond: [{ $gte: ['$studentAverage', 75] }, 1, 0]
-                        }
-                    }
-                }
+        const allStudents = await prisma.student.findMany({
+            where: { classId: { in: classIds } },
+            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
+        });
+
+        const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
+        for (const student of allStudents) {
+            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
+            const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
+            entry.studentCount += 1;
+            entry.totalAverage += studentAverage;
+            if (studentAverage >= 75) {
+                entry.passCount += 1;
             }
-        ]);
+            classPerformanceMap.set(student.classId, entry);
+        }
+
         const classPerformanceById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const classMetric of classPerformanceAggregate) {
-            const studentCount = classMetric.studentCount;
-            classPerformanceById.set(classMetric._id, {
-                studentCount,
-                avgScore: studentCount ? classMetric.totalAverage / studentCount : 0,
-                passRate: studentCount ? (classMetric.passCount / studentCount) * 100 : 0
+        for (const [classId, metric] of classPerformanceMap) {
+            classPerformanceById.set(classId, {
+                studentCount: metric.studentCount,
+                avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
+                passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
             });
         }
 
-        const database = mongoose.connection.db;
-        let onTimeEmails = new Set<string>();
+        const uploads = await prisma.teacherItemAnalysis.findMany({
+            where: { teacherEmail: { not: '' } },
+            select: { teacherEmail: true }
+        }) as unknown as Array<{ teacherEmail?: string }>;
 
-        if (database) {
-            const uploads = await database.collection('teacher_item_analysis')
-                .find(
-                    { teacherEmail: { $exists: true, $ne: '' } },
-                    { projection: { teacherEmail: 1 } }
-                )
-                .toArray() as Array<{ teacherEmail?: string }>;
-
-            onTimeEmails = new Set(
-                uploads
-                    .map((upload) => upload.teacherEmail?.trim().toLowerCase() ?? '')
-                    .filter((email) => email.length > 0)
-            );
-        }
+        const onTimeEmails = new Set(
+            uploads
+                .map((upload) => upload.teacherEmail?.trim().toLowerCase() ?? '')
+                .filter((email) => email.length > 0)
+        );
 
         const response = buildResponse(teacherRecords, classes, classPerformanceById, onTimeEmails);
         return res.json(response);
@@ -4036,6 +4111,7 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
     const requesterEmail = req.header('x-user-email');
     const selectedClassQuery = typeof req.query.class === 'string' ? req.query.class.trim() : '';
     const selectedSubjectQuery = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+    const selectedQuarterQuery = typeof req.query.quarter === 'string' ? req.query.quarter.trim() : '';
 
     if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
         return res.status(403).json({ message: 'Only administrators can view item analysis.' });
@@ -4071,14 +4147,18 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
         const selectedSubject = selectedSubjectQuery && subjectOptions.includes(selectedSubjectQuery)
             ? selectedSubjectQuery
             : (subjectOptions[0] ?? '');
+        const quarterOptions: string[] = [];
+        const selectedQuarter = '';
 
         const emptyResponse: AdminItemAnalysisResponse = {
             title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
             classOptions,
             classSubjectMap,
             subjectOptions,
+            quarterOptions,
             selectedClass,
             selectedSubject,
+            selectedQuarter,
             classAverage: '0.0%',
             averageIndex: '0.0%',
             totalStudents: 0,
@@ -4095,33 +4175,15 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can view item analysis.' });
         }
 
-        const database = mongoose.connection.db;
-        if (!database) {
-            const emptyResponse: AdminItemAnalysisResponse = {
-                title: 'Item Analysis',
-                classOptions: [],
-                classSubjectMap: {},
-                subjectOptions: [],
-                selectedClass: '',
-                selectedSubject: '',
-                classAverage: '0.0%',
-                averageIndex: '0.0%',
-                totalStudents: 0,
-                rows: []
-            };
-
-            return res.json(emptyResponse);
-        }
-
-        const classRecords = await ClassSectionModel.find({}).lean();
+        const classRecords = await prisma.classSection.findMany();
         const classSubjectMap: Record<string, string[]> = {};
 
         for (const classItem of classRecords) {
@@ -4144,10 +4206,9 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
         const classOptions = Object.keys(classSubjectMap)
             .sort((first, second) => first.localeCompare(second));
 
-        const uploads = await database.collection('teacher_item_analysis')
-            .find({})
-            .sort({ timestamp: -1 })
-            .toArray() as Array<Record<string, unknown>>;
+        const uploads = await prisma.teacherItemAnalysis.findMany({
+            orderBy: { timestamp: 'desc' }
+        }) as unknown as Array<Record<string, unknown>>;
 
         const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)
             ? selectedClassQuery
@@ -4163,16 +4224,36 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             ? selectedSubjectQuery
             : (subjectOptions[0] ?? '');
 
-        const selectedAnalysis = uploadsForClass.find((upload) => String(upload.subject ?? '').trim() === selectedSubject);
+        const quarterOptions = Array.from(new Set(
+            uploadsForClass
+                .filter((upload) => String(upload.subject ?? '').trim() === selectedSubject)
+                .map((upload) => String(upload.quarter ?? '').trim())
+                .filter((quarter) => quarter.length > 0)
+        )).sort((first, second) => first.localeCompare(second));
 
-        if (!selectedAnalysis) {
+        const selectedQuarter = selectedQuarterQuery && quarterOptions.includes(selectedQuarterQuery)
+            ? selectedQuarterQuery
+            : (quarterOptions[0] ?? '');
+
+        const selectedAnalysis = uploadsForClass.find((upload) => String(upload.subject ?? '').trim() === selectedSubject);
+        const selectedAnalysisForQuarter = uploadsForClass.find((upload) => {
+            const subjectMatches = String(upload.subject ?? '').trim() === selectedSubject;
+            const quarterMatches = String(upload.quarter ?? '').trim() === selectedQuarter;
+            return subjectMatches && quarterMatches;
+        });
+
+        const activeAnalysis = selectedAnalysisForQuarter ?? selectedAnalysis;
+
+        if (!activeAnalysis) {
             const emptyResponse: AdminItemAnalysisResponse = {
                 title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
                 classOptions,
                 classSubjectMap,
                 subjectOptions,
+                quarterOptions,
                 selectedClass,
                 selectedSubject,
+                selectedQuarter,
                 classAverage: '0.0%',
                 averageIndex: '0.0%',
                 totalStudents: 0,
@@ -4182,12 +4263,38 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             return res.json(emptyResponse);
         }
 
-        const items = (selectedAnalysis.items as Array<{
+        const items = (activeAnalysis.items as Array<{
             item?: string;
             difficulty?: number;
             discrimination?: number;
             interpretation?: string;
         }>) ?? [];
+
+        const studentItemResults = Array.isArray(activeAnalysis.studentItemResults)
+            ? (activeAnalysis.studentItemResults as Array<{
+                itemResults?: Array<{
+                    itemNo?: number;
+                    interpretation?: string;
+                }>;
+            }>)
+            : [];
+
+        const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();
+        studentItemResults.forEach((studentResult) => {
+            (studentResult.itemResults ?? []).forEach((itemResult) => {
+                const itemNo = Number(itemResult.itemNo);
+                if (!Number.isFinite(itemNo)) {
+                    return;
+                }
+
+                const current = itemResultStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+                current.totalCount += 1;
+                if (String(itemResult.interpretation ?? '').trim().toLowerCase() === 'correct') {
+                    current.correctCount += 1;
+                }
+                itemResultStats.set(itemNo, current);
+            });
+        });
 
         const toStatus = (interpretation: string): 'excellent' | 'good' | 'fair' | 'poor' => {
             const normalized = interpretation.trim().toLowerCase();
@@ -4209,28 +4316,36 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
 
         const rows: AdminItemAnalysisRow[] = items.map((item, index) => {
             const interpretation = String(item.interpretation ?? 'Needs Improvement');
+            const difficultyIndex = typeof item.difficulty === 'number' ? item.difficulty : 0;
+            const discriminationIndex = typeof item.discrimination === 'number' ? item.discrimination : 0;
+            const stats = itemResultStats.get(index + 1) ?? { correctCount: 0, totalCount: 0 };
             return {
                 itemNo: index + 1,
-                difficultyIndex: typeof item.difficulty === 'number' ? item.difficulty : 0,
-                discriminationIndex: typeof item.discrimination === 'number' ? item.discrimination : 0,
+                difficultyIndex,
+                difficultyLabel: getDifficultyLabel(difficultyIndex),
+                discriminationIndex,
+                result: `${stats.correctCount}/${stats.totalCount}`,
                 interpretation,
+                decision: computeDecision(difficultyIndex, discriminationIndex),
                 status: toStatus(interpretation)
             };
         });
 
-        const classAverageValue = ((selectedAnalysis.summary as Record<string, unknown>)?.avgDifficulty ?? 0) as number;
-        const averageIndexValue = ((selectedAnalysis.summary as Record<string, unknown>)?.avgDiscrimination ?? 0) as number;
+        const classAverageValue = ((activeAnalysis.summary as Record<string, unknown>)?.avgDifficulty ?? 0) as number;
+        const averageIndexValue = ((activeAnalysis.summary as Record<string, unknown>)?.avgDiscrimination ?? 0) as number;
 
         const response: AdminItemAnalysisResponse = {
             title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
             classOptions,
             classSubjectMap,
             subjectOptions,
+            quarterOptions,
             selectedClass,
             selectedSubject,
+            selectedQuarter,
             classAverage: `${(classAverageValue * 100).toFixed(1)}%`,
             averageIndex: `${(averageIndexValue * 100).toFixed(1)}%`,
-            totalStudents: typeof selectedAnalysis.totalStudents === 'number' ? selectedAnalysis.totalStudents : rows.length,
+            totalStudents: typeof activeAnalysis.totalStudents === 'number' ? activeAnalysis.totalStudents : rows.length,
             rows
         };
 
@@ -4349,71 +4464,50 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can view teacher accounts.' });
         }
 
-        const teacherRecords = await TeacherModel.find({}).sort({ lastName: 1, firstName: 1 }).lean();
-        const classRecords = await ClassSectionModel.find({})
-            .sort({ updatedAt: 1, createdAt: 1 })
-            .lean();
+        const teacherRecords = await prisma.teacher.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
+        const classRecords = await prisma.classSection.findMany({
+            orderBy: [{ updatedAt: 'asc' }, { createdAt: 'asc' }]
+        });
 
         const classEntries = classRecords.map((classRecord) => ({
-            id: String(classRecord._id ?? classRecord.id ?? `${classRecord.className}-${classRecord.section}`),
+            id: String(classRecord.id ?? `${classRecord.className}-${classRecord.section}`),
             teacherName: classRecord.teacherName
         }));
         const classIds = classEntries.map((classEntry) => classEntry.id);
 
-        const classPerformanceAggregate = await StudentModel.aggregate<{
-            _id: string;
-            studentCount: number;
-            totalAverage: number;
-            passCount: number;
-        }>([
-            {
-                $match: {
-                    classId: { $in: classIds }
-                }
-            },
-            {
-                $addFields: {
-                    studentAverage: {
-                        $avg: [
-                            { $ifNull: ['$q1Score', 0] },
-                            { $ifNull: ['$q2Score', 0] },
-                            { $ifNull: ['$q3Score', 0] },
-                            { $ifNull: ['$q4Score', 0] }
-                        ]
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: '$classId',
-                    studentCount: { $sum: 1 },
-                    totalAverage: { $sum: '$studentAverage' },
-                    passCount: {
-                        $sum: {
-                            $cond: [{ $gte: ['$studentAverage', 75] }, 1, 0]
-                        }
-                    }
-                }
+        const allStudents = await prisma.student.findMany({
+            where: { classId: { in: classIds } },
+            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
+        });
+
+        const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
+        for (const student of allStudents) {
+            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
+            const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
+            entry.studentCount += 1;
+            entry.totalAverage += studentAverage;
+            if (studentAverage >= 75) {
+                entry.passCount += 1;
             }
-        ]);
+            classPerformanceMap.set(student.classId, entry);
+        }
 
         const classMetricsById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const classMetric of classPerformanceAggregate) {
-            const studentCount = classMetric.studentCount;
-            classMetricsById.set(classMetric._id, {
-                studentCount,
-                avgScore: studentCount ? classMetric.totalAverage / studentCount : 0,
-                passRate: studentCount ? (classMetric.passCount / studentCount) * 100 : 0
+        for (const [classId, metric] of classPerformanceMap) {
+            classMetricsById.set(classId, {
+                studentCount: metric.studentCount,
+                avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
+                passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
             });
         }
 
@@ -4502,8 +4596,9 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
         }
 
         if (password || confirmPassword) {
-            if (!verifyPassword(oldPassword!, existingTeacher.passwordHash)) {
-                return res.status(400).json({ message: 'Old password is incorrect.' });
+            // Require admin's password to authorize changing a teacher's password in fallback mode
+            if (!fallbackAdmin.passwordHash || !verifyPassword(oldPassword!, fallbackAdmin.passwordHash)) {
+                return res.status(400).json({ message: 'Admin password is incorrect.' });
             }
         }
 
@@ -4534,29 +4629,30 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can update teacher accounts.' });
         }
 
-        const existingTeacher = await TeacherModel.findById(teacherId).lean();
+        const existingTeacher = await prisma.teacher.findUnique({ where: { id: teacherId } });
 
         if (!existingTeacher) {
             return res.status(404).json({ message: 'Teacher account not found.' });
         }
 
         if (password || confirmPassword) {
-            if (!existingTeacher.passwordHash || !verifyPassword(oldPassword!, existingTeacher.passwordHash)) {
-                return res.status(400).json({ message: 'Old password is incorrect.' });
+            // Require the requesting administrator to provide their own password to authorize the change
+            if (!adminAccount.passwordHash || !verifyPassword(oldPassword!, adminAccount.passwordHash)) {
+                return res.status(400).json({ message: 'Admin password is incorrect.' });
             }
         }
 
         if (normalizeEmail(existingTeacher.email) !== normalizedTeacherEmail) {
             const conflictingUsers = await findDatabaseUsersByEmail(normalizedTeacherEmail);
-            const hasConflict = conflictingUsers.some(({ user }) => String(user._id ?? user.id ?? '') !== String(existingTeacher._id ?? ''));
+            const hasConflict = conflictingUsers.some(({ user }) => String(user.id ?? '') !== String(existingTeacher.id ?? ''));
 
             if (hasConflict) {
                 return res.status(409).json({ message: 'An account with this email/username already exists.' });
@@ -4572,11 +4668,10 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
             updateData.passwordHash = hashPassword(password);
         }
 
-        const updatedTeacher = await TeacherModel.findByIdAndUpdate(
-            teacherId,
-            updateData,
-            { new: true }
-        ).lean();
+        const updatedTeacher = await prisma.teacher.update({
+            where: { id: teacherId },
+            data: updateData
+        });
 
         if (!updatedTeacher) {
             return res.status(404).json({ message: 'Teacher account not found.' });
@@ -4635,15 +4730,15 @@ app.delete('/api/admin/teachers/:teacherId', async (req: Request, res: Response)
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can delete teacher accounts.' });
         }
 
-        const deletedTeacher = await TeacherModel.findByIdAndDelete(teacherId).lean();
+        const deletedTeacher = await prisma.teacher.delete({ where: { id: teacherId } });
 
         if (!deletedTeacher) {
             return res.status(404).json({ message: 'Teacher account not found.' });
@@ -4695,34 +4790,29 @@ app.get('/api/admin/classes', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const StudentModel = Student as mongoose.Model<StudentRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can view class records.' });
         }
 
-        const classRecords = await ClassSectionModel.find({}).sort({ gradeLevel: 1, section: 1 }).lean();
-        const classIds = classRecords.map((classItem) => String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`));
-        const studentCounts = await StudentModel.aggregate<{ _id: string; count: number }>([
-            {
-                $match: {
-                    classId: { $in: classIds }
-                }
-            },
-            {
-                $group: {
-                    _id: '$classId',
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
-        const studentCountMap = new Map(studentCounts.map((item) => [item._id, item.count]));
+        const classRecords = await prisma.classSection.findMany({ orderBy: [{ gradeLevel: 'asc' }, { section: 'asc' }] });
+        const classIds = classRecords.map((classItem) => String(classItem.id ?? `${classItem.className}-${classItem.section}`));
+        const studentsForCount = await prisma.student.findMany({
+            where: { classId: { in: classIds } },
+            select: { classId: true }
+        });
+        const studentCountMap = new Map<string, number>();
+        for (const student of studentsForCount) {
+            const count = studentCountMap.get(student.classId) ?? 0;
+            studentCountMap.set(student.classId, count + 1);
+        }
 
         const classes = classRecords.map((classItem) => {
-            const classId = String(classItem._id ?? classItem.id ?? `${classItem.className}-${classItem.section}`);
+            const classId = String(classItem.id ?? `${classItem.className}-${classItem.section}`);
             return {
                 ...buildClassListItem(classItem),
                 studentCount: studentCountMap.get(classId) ?? 0
@@ -4791,25 +4881,27 @@ app.post('/api/admin/classes', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can create class records.' });
         }
 
-        const createdClass = await ClassSectionModel.create({
-            className: className.trim(),
-            gradeLevel: gradeLevel.trim(),
-            section: section.trim(),
-            subject: subject.trim(),
-            teacherName: teacherName.trim(),
-            studentCount: Math.floor(studentCount)
+        const createdClass = await prisma.classSection.create({
+            data: {
+                className: className.trim(),
+                gradeLevel: gradeLevel.trim(),
+                section: section.trim(),
+                subject: subject.trim(),
+                teacherName: teacherName.trim(),
+                studentCount: Math.floor(studentCount)
+            }
         });
 
-        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, createdClass.teacherName);
+        await syncDatabaseTeacherAssignmentByName(createdClass.teacherName);
 
         return res.status(201).json({
             message: 'Class record created successfully.',
@@ -4888,40 +4980,39 @@ app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can update class records.' });
         }
 
-        const existingClass = await ClassSectionModel.findById(classId).lean();
+        const existingClass = await prisma.classSection.findUnique({ where: { id: classId } });
 
         if (!existingClass) {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
-        const updatedClass = await ClassSectionModel.findByIdAndUpdate(
-            classId,
-            {
+        const updatedClass = await prisma.classSection.update({
+            where: { id: classId },
+            data: {
                 className: className.trim(),
                 gradeLevel: gradeLevel.trim(),
                 section: section.trim(),
                 subject: subject.trim(),
                 teacherName: teacherName.trim(),
                 studentCount: Math.floor(studentCount)
-            },
-            { new: true }
-        ).lean();
+            }
+        });
 
         if (!updatedClass) {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
-        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, existingClass.teacherName);
-        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, updatedClass.teacherName);
+        await syncDatabaseTeacherAssignmentByName(existingClass.teacherName);
+        await syncDatabaseTeacherAssignmentByName(updatedClass.teacherName);
 
         return res.json({
             message: 'Class record updated successfully.',
@@ -4974,22 +5065,22 @@ app.delete('/api/admin/classes/:classId', async (req: Request, res: Response) =>
     }
 
     try {
-        const AdministratorModel = Administrator as mongoose.Model<CredentialUserRecord>;
-        const ClassSectionModel = ClassSection as mongoose.Model<ClassRecord>;
-        const TeacherModel = Teacher as mongoose.Model<CredentialUserRecord>;
-        const adminAccount = await AdministratorModel.findOne({ email: normalizedAdminEmail }).lean();
+        
+        
+        
+        const adminAccount = await prisma.administrator.findFirst({ where: { email: normalizedAdminEmail } });
 
         if (!adminAccount) {
             return res.status(403).json({ message: 'Only valid administrators can delete class records.' });
         }
 
-        const deletedClass = await ClassSectionModel.findByIdAndDelete(classId).lean();
+        const deletedClass = await prisma.classSection.delete({ where: { id: classId } });
 
         if (!deletedClass) {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
-        await syncDatabaseTeacherAssignmentByName(TeacherModel, ClassSectionModel, deletedClass.teacherName);
+        await syncDatabaseTeacherAssignmentByName(deletedClass.teacherName);
 
         return res.json({ message: 'Class record deleted successfully.' });
     } catch (error) {
@@ -5001,4 +5092,72 @@ app.delete('/api/admin/classes/:classId', async (req: Request, res: Response) =>
 // 6. Start Server
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
+
+app.get('/api/admin/tos', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const schoolYear = typeof req.query.schoolYear === 'string' ? req.query.schoolYear.trim() : '';
+    const quarter = typeof req.query.quarter === 'string' ? req.query.quarter.trim() : '';
+    const classValue = typeof req.query.classValue === 'string' ? req.query.classValue.trim() : '';
+    const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+
+    if (requesterRole !== 'administrator' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only administrators can view saved TOS drafts.' });
+    }
+
+    if (!schoolYear || !quarter || !classValue || !subject) {
+        return res.status(400).json({ message: 'School year, quarter, class, and subject are required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable.' });
+    }
+
+    try {
+        
+        
+        const normalizeQuarter = (value: string): string => {
+            const match = value.match(/(\d+)/);
+            if (!match) {
+                return value.trim().toLowerCase();
+            }
+
+            const quarterDigits = match[1] ?? '';
+            const quarterNumber = Number.parseInt(quarterDigits, 10);
+            if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) {
+                return value.trim().toLowerCase();
+            }
+
+            return `q${quarterNumber}`;
+        };
+
+        const filter = {
+            schoolYear,
+            classValue,
+            subject
+        };
+
+        const requestedQuarterKey = normalizeQuarter(quarter);
+        const blueprints = await prisma.tosBlueprint.findMany({ where: filter });
+        const blueprint = blueprints.find((record) => normalizeQuarter(String(record.quarter ?? '')) === requestedQuarterKey) ?? null;
+
+        if (!blueprint) {
+            return res.status(404).json({ message: 'No saved TOS draft found.' });
+        }
+
+        const histories = await prisma.tosBlueprintHistory.findMany({ where: filter, select: { quarter: true } });
+        const historyCount = histories.filter((record) => normalizeQuarter(String(record.quarter ?? '')) === requestedQuarterKey).length;
+
+        return res.json({
+            blueprint: {
+                ...blueprint,
+                version: blueprint.latestHistoryVersion ?? historyCount,
+                historyCount
+            }
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load saved TOS draft.';
+        return res.status(500).json({ message });
+    }
 });

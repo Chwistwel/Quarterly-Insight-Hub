@@ -79,67 +79,72 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 		navigate('/');
 	};
 
+	const toggleSidebar = () => setSidebarOpen((prev) => !prev);
+
 	return (
-		<div className={`teacher-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
-			<aside className={`teacher-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
-				<div className="teacher-profile-header">
-					<div className="teacher-profile">
-						<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
-						<div>
-							<h2>{displayName}</h2>
-							<p>Teacher</p>
+		<>
+			<div className={`teacher-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
+				<aside className={`teacher-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
+					<div className="teacher-profile-header">
+						<div className="teacher-profile">
+							<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
+							<div>
+								<h2>{displayName}</h2>
+								<p>Teacher</p>
+							</div>
 						</div>
+						<button
+							type="button"
+							className="teacher-sidebar-close"
+							onClick={toggleSidebar}
+							aria-label="Toggle sidebar"
+						>
+							{sidebarOpen ? <CloseIcon className="teacher-sidebar-close-icon" /> : <MenuIcon className="teacher-sidebar-close-icon" />}
+						</button>
 					</div>
-					<button
-						type="button"
-						className="teacher-sidebar-close"
-						onClick={() => setSidebarOpen(!sidebarOpen)}
-						aria-label="Toggle sidebar"
-					>
-						{sidebarOpen ? <CloseIcon className="teacher-sidebar-close-icon" /> : <MenuIcon className="teacher-sidebar-close-icon" />}
+
+					<nav className="teacher-menu" aria-label="Teacher navigation">
+						<NavLink to="/teacher/dashboard" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+							<span className="teacher-menu-item-icon"><DashboardIcon /></span>
+							<span className="teacher-menu-item-label">Dashboard</span>
+						</NavLink>
+						<NavLink
+							to="/teacher/item-analysis"
+							className={({ isActive }) => `teacher-menu-item${isActive || isAnalysisRoute ? ' active' : ''}`}
+						>
+							<span className="teacher-menu-item-icon"><AnalysisIcon /></span>
+							<span className="teacher-menu-item-label">Analysis Tools</span>
+						</NavLink>
+						<NavLink to="/teacher/my-classes" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+							<span className="teacher-menu-item-icon"><ClassesIcon /></span>
+							<span className="teacher-menu-item-label">Classes</span>
+						</NavLink>
+						<NavLink to="/teacher/my-reports" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
+							<span className="teacher-menu-item-icon"><ReportsIcon /></span>
+							<span className="teacher-menu-item-label">Reports</span>
+						</NavLink>
+					</nav>
+
+					<button type="button" className="teacher-logout" onClick={handleLogout}>
+						<LogOutIcon className="layout-logout-icon" />
+						Log Out
 					</button>
-				</div>
+				</aside>
 
-				<nav className="teacher-menu" aria-label="Teacher navigation">
-					<NavLink to="/teacher/dashboard" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
-						<span className="teacher-menu-item-icon"><DashboardIcon /></span>
-						<span className="teacher-menu-item-label">Dashboard</span>
-					</NavLink>
-					<NavLink
-						to="/teacher/item-analysis"
-						className={({ isActive }) => `teacher-menu-item${isActive || isAnalysisRoute ? ' active' : ''}`}
-					>
-						<span className="teacher-menu-item-icon"><AnalysisIcon /></span>
-						<span className="teacher-menu-item-label">Analysis Tools</span>
-					</NavLink>
-					<NavLink to="/teacher/my-classes" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
-						<span className="teacher-menu-item-icon"><ClassesIcon /></span>
-						<span className="teacher-menu-item-label">Classes</span>
-					</NavLink>
-					<NavLink to="/teacher/my-reports" className={({ isActive }) => `teacher-menu-item${isActive ? ' active' : ''}`}>
-						<span className="teacher-menu-item-icon"><ReportsIcon /></span>
-						<span className="teacher-menu-item-label">Reports</span>
-					</NavLink>
-				</nav>
+				<section className="teacher-main">
+					{actions ? (
+						<header className="teacher-main-header">
+							<div>
+								<h1>{title}</h1>
+							</div>
+							<div className="teacher-main-actions">{actions}</div>
+						</header>
+					) : null}
+					{children}
+				</section>
+			</div>
 
-				<button type="button" className="teacher-logout" onClick={handleLogout}>
-					<LogOutIcon className="layout-logout-icon" />
-					Log Out
-				</button>
-			</aside>
-
-			<section className="teacher-main">
-				{actions ? (
-					<header className="teacher-main-header">
-						<div>
-							<h1>{title}</h1>
-						</div>
-						<div className="teacher-main-actions">{actions}</div>
-					</header>
-				) : null}
-				{children}
-			</section>
-		</div>
+		</>
 	);
 }
 

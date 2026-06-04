@@ -1,11 +1,11 @@
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
 import { randomBytes, scryptSync } from 'crypto';
-import Administrator from './models/Administrator.ts';
+import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || '';
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const prisma = new PrismaClient();
 
 function hashPassword(password) {
     const salt = randomBytes(16).toString('hex');
@@ -15,14 +15,14 @@ function hashPassword(password) {
 
 async function createAdminAccount() {
     try {
-        if (!MONGO_URI) {
-            console.error('❌ MONGO_URI not found in .env file');
+        if (!DATABASE_URL) {
+            console.error('❌ DATABASE_URL not found in .env file');
             process.exit(1);
         }
 
-        console.log('🔗 Connecting to MongoDB...');
-        await mongoose.connect(MONGO_URI);
-        console.log('✅ Connected to MongoDB');
+        console.log('🔗 Connecting to PostgreSQL...');
+        await prisma.$connect();
+        console.log('✅ Connected to PostgreSQL');
 
         const adminEmail = 'admin';
         const adminPassword = 'password123';
@@ -30,20 +30,22 @@ async function createAdminAccount() {
         const lastName = 'user';
 
         // Check if admin already exists
-        const existingAdmin = await Administrator.findOne({ email: adminEmail });
+        const existingAdmin = await prisma.administrator.findFirst({ where: { email: adminEmail } });
         if (existingAdmin) {
             console.log(`⚠️  Admin account with email "${adminEmail}" already exists`);
-            await mongoose.disconnect();
+            await prisma.$disconnect();
             process.exit(0);
         }
 
         // Create new admin account
         const passwordHash = hashPassword(adminPassword);
-        const newAdmin = await Administrator.create({
-            firstName,
-            lastName,
-            email: adminEmail,
-            passwordHash
+        const newAdmin = await prisma.administrator.create({
+            data: {
+                firstName,
+                lastName,
+                email: adminEmail,
+                passwordHash
+            }
         });
 
         console.log('✅ Admin account created successfully!');
@@ -52,11 +54,11 @@ async function createAdminAccount() {
         console.log('👤 Name:', `${firstName} ${lastName}`);
         console.log('\n⚠️  Please change this password after your first login.');
 
-        await mongoose.disconnect();
+        await prisma.$disconnect();
         process.exit(0);
     } catch (error) {
         console.error('❌ Error creating admin account:', error instanceof Error ? error.message : error);
-        await mongoose.disconnect();
+        await prisma.$disconnect();
         process.exit(1);
     }
 }

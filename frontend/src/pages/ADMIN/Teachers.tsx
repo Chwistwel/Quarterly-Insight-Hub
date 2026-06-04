@@ -433,7 +433,7 @@ function Teachers() {
                   />
                 </label>
                 <label>
-                  Old Password
+                  Admin Password
                   <input
                     type="password"
                     name="oldPassword"

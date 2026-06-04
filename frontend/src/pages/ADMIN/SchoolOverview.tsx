@@ -28,8 +28,6 @@ function SchoolOverview() {
 	const [error, setError] = useState<string | null>(null);
 	const [selectedGradeLevel, setSelectedGradeLevel] = useState('All Grades');
 	const [selectedQuarter, setSelectedQuarter] = useState('All Quarters');
-	const [appliedGradeLevel, setAppliedGradeLevel] = useState('All Grades');
-	const [appliedQuarter, setAppliedQuarter] = useState('All Quarters');
 
 	const gradeOptions = useMemo(() => ([
 		{ id: 'All Grades', label: 'All Grades' },
@@ -78,11 +76,11 @@ function SchoolOverview() {
 				const role = localStorage.getItem('userRole') ?? '';
 				const email = localStorage.getItem('userEmail') ?? '';
 				const params = new URLSearchParams();
-				if (appliedGradeLevel) {
-					params.set('gradeLevel', appliedGradeLevel);
+				if (selectedGradeLevel) {
+					params.set('gradeLevel', selectedGradeLevel);
 				}
-				if (appliedQuarter) {
-					params.set('quarter', appliedQuarter);
+				if (selectedQuarter) {
+					params.set('quarter', selectedQuarter);
 				}
 
 				const query = params.toString();
@@ -104,12 +102,7 @@ function SchoolOverview() {
 		};
 
 		void load();
-	}, [appliedGradeLevel, appliedQuarter]);
-
-	const handleApplyFilters = () => {
-		setAppliedGradeLevel(selectedGradeLevel);
-		setAppliedQuarter(selectedQuarter);
-	};
+	}, [selectedGradeLevel, selectedQuarter]);
 
 	const getStatusBadgeClass = (status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement'): string => {
 		if (status === 'Excellent') {
@@ -146,9 +139,6 @@ function SchoolOverview() {
 						<option key={quarter} value={quarter}>{quarter}</option>
 					))}
 				</select>
-				<button type="button" className="admin-filter-apply-btn" onClick={handleApplyFilters} disabled={loading}>
-					Apply
-				</button>
 			</section>
 
 			<section className="admin-kpis admin-kpis-2">

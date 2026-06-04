@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Administrator {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Teacher {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  passwordHash String
+  subject      String   @default("")
+  className    String   @default("")
+  averageScore Float    @default(0)
+  passRate     Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ClassSection {
+  id           String   @id @default(cuid())
+  className    String
+  gradeLevel   String
+  section      String
+  subject      String
+  teacherName  String
+  studentCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Student {
+  id            String   @id @default(cuid())
+  classId       String
+  teacherEmail  String
+  studentNo     String   @default("")
+  name          String
+  firstName     String   @default("")
+  middleInitial String   @default("")
+  lastName      String   @default("")
+  gender        String   @default("")
+  grade         String
+  section       String
+  subject       String
+  q1Score       Float    @default(0)
+  q2Score       Float    @default(0)
+  q3Score       Float    @default(0)
+  q4Score       Float    @default(0)
+  ranking       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([classId])
+  @@index([teacherEmail])
+  @@index([studentNo])
+  @@index([lastName])
+}
+
+model TosBlueprint {
+  id                   String   @id @default(cuid())
+  teacherEmail         String
+  schoolYear           String
+  quarter              String
+  classValue           String
+  subject              String
+  totalDays            Int      @default(0)
+  totalItems           Int      @default(0)
+  objectiveCount       Int      @default(0)
+  bloomWeights         Json     @default("{}")
+  rows                 Json     @default("[]")
+  latestHistoryVersion Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([teacherEmail, schoolYear, classValue, subject, quarter])
+  @@index([teacherEmail])
+  @@index([schoolYear])
+  @@index([quarter])
+  @@index([classValue])
+  @@index([subject])
+}
+
+model TosBlueprintHistory {
+  id             String   @id @default(cuid())
+  teacherEmail   String
+  schoolYear     String
+  quarter        String
+  classValue     String
+  subject        String
+  version        Int
+  savedAt        DateTime
+  totalDays      Int      @default(0)
+  totalItems     Int      @default(0)
+  objectiveCount Int      @default(0)
+  bloomWeights   Json     @default("{}")
+  rows           Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([teacherEmail, schoolYear, classValue, subject, quarter, version])
+  @@index([teacherEmail, schoolYear, classValue, subject, quarter, savedAt])
+  @@index([teacherEmail])
+  @@index([schoolYear])
+  @@index([quarter])
+  @@index([classValue])
+  @@index([subject])
+}
+
+model TeacherItemAnalysis {
+  id                   String   @id @default(cuid())
+  class                String
+  subject              String
+  quarter              String
+  teacherEmail         String
+  timestamp            DateTime @default(now())
+  summary              Json     @default("{}")
+  items                Json     @default("[]")
+  studentResults       Json     @default("[]")
+  studentItemResults   Json     @default("[]")
+  studentIdentityLinks Json     @default("[]")
+  totalStudents        Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([teacherEmail])
+  @@index([class, subject, quarter, teacherEmail])
+}
+
+model TeacherUploadMeta {
+  id              String   @id @default(cuid())
+  quarters        Json     @default("[\"Quarter 1\",\"Quarter 2\",\"Quarter 3\",\"Quarter 4\"]")
+  fileFormats     Json     @default("[\"CSV\",\"Excel\"]")
+  requiredColumns Json     @default("[\"Student ID\",\"Student Name\",\"Item Responses (1-50)\",\"Answer Key\"]")
+  processingTime  String   @default("Analysis typically takes 5-10 minutes depending on the number of students.")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TeacherReport {
+  id        String   @id @default(cuid())
+  actions   Json     @default("[]")
+  reports   Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

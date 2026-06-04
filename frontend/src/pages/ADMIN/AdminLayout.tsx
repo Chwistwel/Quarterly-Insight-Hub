@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LogOutIcon, UserIcon } from '../../components/icons';
+import { CloseIcon, LogOutIcon, MenuIcon, UserIcon } from '../../components/icons';
+import '../../styles/ADMIN/SchoolOverview.css';
 
 type StoredUserProfile = {
   firstName?: string;
@@ -69,6 +71,7 @@ type AdminLayoutProps = {
 };
 
 function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const storedProfileText = localStorage.getItem('userProfile');
   let storedProfile: StoredUserProfile | null = null;
@@ -89,67 +92,84 @@ function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
 
   const handleLogout = () => {
     localStorage.removeItem('userRole');
+    localStorage.removeItem('userEmail');
     localStorage.removeItem('userProfile');
     navigate('/');
   };
 
+  const toggleSidebar = () => setSidebarOpen((previous) => !previous);
+
   return (
-    <div className="admin-workspace">
-      <aside className="admin-sidebar">
-        <NavLink to="/admin/profile" className={({ isActive }) => `admin-profile-link${isActive ? ' active' : ''}`}>
-          <div className="admin-profile">
-            <div className="admin-avatar"><UserIcon className="layout-avatar-icon" /></div>
+    <>
+      <div className={`admin-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
+        <aside className={`admin-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
+          <div className="admin-profile-header">
+            <NavLink to="/admin/profile" className={({ isActive }) => `admin-profile-link${isActive ? ' active' : ''}`}>
+              <div className="admin-profile">
+                <div className="admin-avatar"><UserIcon className="layout-avatar-icon" /></div>
+                <div>
+                  <h2>{displayName}</h2>
+                  <p>{roleLabel}</p>
+                </div>
+              </div>
+            </NavLink>
+
+            <button
+              type="button"
+              className="admin-sidebar-close"
+              onClick={toggleSidebar}
+              aria-label="Toggle sidebar"
+            >
+              {sidebarOpen ? <CloseIcon className="admin-sidebar-close-icon" /> : <MenuIcon className="admin-sidebar-close-icon" />}
+            </button>
+          </div>
+
+          <nav className="admin-menu" aria-label="Administrator navigation">
+            <NavLink to="/admin/overview" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><OverviewIcon /></span>
+              <span className="admin-menu-item-label">School Overview</span>
+            </NavLink>
+            <NavLink to="/admin/teachers" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><TeachersIcon /></span>
+              <span className="admin-menu-item-label">Teachers</span>
+            </NavLink>
+            <NavLink to="/admin/all-classes" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><ClassesIcon /></span>
+              <span className="admin-menu-item-label">All Classes</span>
+            </NavLink>
+            <NavLink to="/admin/item-analysis" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><ItemAnalysisIcon /></span>
+              <span className="admin-menu-item-label">Item Analysis</span>
+            </NavLink>
+            <NavLink to="/admin/teacher-performance" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><TeacherPerformanceIcon /></span>
+              <span className="admin-menu-item-label">Teacher Performance</span>
+            </NavLink>
+            <NavLink to="/admin/all-reports" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
+              <span className="admin-menu-item-icon"><ReportsIcon /></span>
+              <span className="admin-menu-item-label">All Reports</span>
+            </NavLink>
+          </nav>
+
+          <button type="button" className="admin-logout" onClick={handleLogout}>
+            <LogOutIcon className="layout-logout-icon" />
+            Log Out
+          </button>
+        </aside>
+
+        <section className="admin-main">
+          <header className="admin-page-head">
+            <p>{kicker}</p>
             <div>
-              <h2>{displayName}</h2>
-              <p>{roleLabel}</p>
+              <h1>{title}</h1>
+              <span>Admin View</span>
             </div>
-          </div>
-        </NavLink>
+          </header>
+          {children}
+        </section>
+      </div>
 
-        <nav className="admin-menu" aria-label="Administrator navigation">
-          <NavLink to="/admin/overview" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><OverviewIcon /></span>
-            <span className="admin-menu-item-label">School Overview</span>
-          </NavLink>
-          <NavLink to="/admin/teachers" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><TeachersIcon /></span>
-            <span className="admin-menu-item-label">Teachers</span>
-          </NavLink>
-          <NavLink to="/admin/all-classes" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><ClassesIcon /></span>
-            <span className="admin-menu-item-label">All Classes</span>
-          </NavLink>
-          <NavLink to="/admin/item-analysis" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><ItemAnalysisIcon /></span>
-            <span className="admin-menu-item-label">Item Analysis</span>
-          </NavLink>
-          <NavLink to="/admin/teacher-performance" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><TeacherPerformanceIcon /></span>
-            <span className="admin-menu-item-label">Teacher Performance</span>
-          </NavLink>
-          <NavLink to="/admin/all-reports" className={({ isActive }) => `admin-menu-item${isActive ? ' active' : ''}`}>
-            <span className="admin-menu-item-icon"><ReportsIcon /></span>
-            <span className="admin-menu-item-label">All Reports</span>
-          </NavLink>
-        </nav>
-
-        <button type="button" className="admin-logout" onClick={handleLogout}>
-          <LogOutIcon className="layout-logout-icon" />
-          Log Out
-        </button>
-      </aside>
-
-      <section className="admin-main">
-        <header className="admin-page-head">
-          <p>{kicker}</p>
-          <div>
-            <h1>{title}</h1>
-            <span>Admin View</span>
-          </div>
-        </header>
-        {children}
-      </section>
-    </div>
+    </>
   );
 }
 

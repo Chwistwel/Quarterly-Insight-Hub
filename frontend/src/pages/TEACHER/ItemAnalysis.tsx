@@ -769,13 +769,24 @@ function ItemAnalysis() {
 		}
 
 		setSavingLinkedAnalysis(true);
+
+		const preparedEntries = (analysisEntries ?? []).map((entry) => {
+			const contentArea = entry.contentArea && entry.contentArea !== '' ? entry.contentArea : (itemToCompetency.get(entry.itemNumber) ?? '-');
+			const intervention = contentArea && contentArea !== '-' ? `Remediation on ${contentArea}` : 'Remediation';
+			return {
+				...entry,
+				contentArea,
+				intervention
+			};
+		});
+
 		upsertLinkedTosRecord({
 			schoolYear: 'N/A',
 			classValue: classToken,
 			subject: subjectToken,
 			quarter: quarterToken,
 			totalItems: targetAnalysisCount,
-			analysisEntries,
+			analysisEntries: preparedEntries,
 			itemAnalysisRows: (data?.rows ?? []).map((row) => ({
 				itemNo: Number(row.itemNo) || 0,
 				difficultyIndex: row.difficultyIndex,
@@ -783,6 +794,7 @@ function ItemAnalysis() {
 				interpretation: row.interpretation
 			}))
 		});
+
 		setSavingLinkedAnalysis(false);
 		setLinkedRecordsVersion((value) => value + 1);
 		setActionMessage('Analysis entries saved and linked to this Class, Subject, and Quarter.');
@@ -1338,11 +1350,9 @@ function ItemAnalysis() {
 												<div style={{ padding: '0.25rem 0.5rem', color: 'var(--text-main)' }}>{displayContent}</div>
 											</td>
 											<td>
-												<input
-													value={entry.intervention}
-													onChange={(event) => updateAnalysisEntryByItemNo(item.itemNo, { intervention: event.target.value })}
-													placeholder="Enter intervention plan"
-												/>
+												<div style={{ padding: '0.25rem 0.5rem', color: 'var(--text-main)' }}>
+													{(displayContent && displayContent !== '-') ? `Remediation on ${displayContent}` : 'Remediation'}
+												</div>
 											</td>
 										</tr>
 									);
