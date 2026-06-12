@@ -31,6 +31,58 @@ type AdminItemAnalysisResponse = {
   rows: AdminItemAnalysisRow[];
 };
 
+type DecisionLabel =
+  | 'Accepted as it is'
+  | 'Accepted with very slight revision'
+  | 'Accepted with slight revision'
+  | 'May be accepted with minor revision'
+  | 'Major revision on the stem or choices'
+  | 'Needs major revision or may be discarded'
+  | 'Totally discard';
+
+const DECISION_ORDER: DecisionLabel[] = [
+  'Accepted as it is',
+  'Accepted with very slight revision',
+  'Accepted with slight revision',
+  'May be accepted with minor revision',
+  'Major revision on the stem or choices',
+  'Needs major revision or may be discarded',
+  'Totally discard'
+];
+
+function parseIndexValue(value: string | number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1 ? value / 100 : value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/%/g, '').trim();
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return parsed > 1 ? parsed / 100 : parsed;
+  }
+
+  return null;
+}
+
+function computeDecision(difficultyValue: string | number, discriminationValue: string | number): DecisionLabel {
+  const diff = parseIndexValue(difficultyValue) ?? -1;
+  const disc = parseIndexValue(discriminationValue) ?? -1;
+
+  if (diff < 0 || disc < 0) return 'Totally discard';
+
+  if (diff >= 0.85 && disc >= 0.4) return 'Accepted as it is';
+  if (diff >= 0.7 && disc >= 0.3) return 'Accepted with very slight revision';
+  if (diff >= 0.45 && disc >= 0.2) return 'Accepted with slight revision';
+  if (diff >= 0.2 && disc >= 0.1) return 'May be accepted with minor revision';
+  if (diff >= 0.2 && disc >= 0) return 'Major revision on the stem or choices';
+  if (diff >= 0.05 || disc >= -0.05) return 'Needs major revision or may be discarded';
+
+  return 'Totally discard';
+}
+
 type AdminTosRow = {
   id: number;
   competency: string;
@@ -109,21 +161,13 @@ function ItemAnalysis() {
   const availableQuarters = data?.quarterOptions ?? [];
 
   const summaryRows = useMemo(() => {
-    const summary = new Map<string, { label: string; count: number }>([
-      ['excellent', { label: 'Excellent', count: 0 }],
-      ['good', { label: 'Good', count: 0 }],
-      ['fair', { label: 'Fair', count: 0 }],
-      ['poor', { label: 'Poor', count: 0 }]
-    ]);
-
+    const summary = new Map<DecisionLabel, number>();
+    DECISION_ORDER.forEach((label) => summary.set(label, 0));
     (data?.rows ?? []).forEach((row) => {
-      const current = summary.get(row.status);
-      if (current) {
-        current.count += 1;
-      }
+      const label = computeDecision(row.difficultyIndex, row.discriminationIndex);
+      summary.set(label, (summary.get(label) ?? 0) + 1);
     });
-
-    return Array.from(summary.values());
+    return DECISION_ORDER.map((label) => ({ label, count: summary.get(label) ?? 0 }));
   }, [data?.rows]);
 
   const [tosBlueprint, setTosBlueprint] = useState<AdminTosBlueprint | null>(null);
@@ -256,23 +300,6 @@ function ItemAnalysis() {
     return rows.filter((row) => row.status === 'fair' || row.status === 'poor');
   }, [data?.rows, selectedView]);
 
-  function parseIndexValue(value: string | number): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value > 1 ? value / 100 : value;
-    }
-
-    if (typeof value === 'string') {
-      const normalized = value.replace(/%/g, '').trim();
-      const parsed = Number(normalized);
-      if (!Number.isFinite(parsed)) {
-        return null;
-      }
-      return parsed > 1 ? parsed / 100 : parsed;
-    }
-
-    return null;
-  }
-
   const sortedByDifficulty = useMemo(() => {
     const items = [...(data?.rows ?? [])].map((row) => {
       const diff = parseIndexValue(row.difficultyIndex) ?? 0;
@@ -296,6 +323,7 @@ function ItemAnalysis() {
           setSelectedSubject('');
           setSelectedQuarter('');
         }}>
+          <option value="">All Classes</option>
           {classOptions.map((classOption) => (
             <option key={classOption} value={classOption}>{classOption}</option>
           ))}
@@ -486,7 +514,12 @@ function ItemAnalysis() {
           </table>
         </div>
       </section>
-      <section className="teacher-item-analysis-linked-panel" style={{ marginTop: '1.5rem' }}>
+      <section className="teacher-panel teacher-item-analysis-linked-panel" style={{ marginTop: '1.5rem' }}>
+        <div className="teacher-panel-head teacher-dash-heading-divider">
+          <h2>Analysis Summary & Interventions</h2>
+          <span>{selectedSubject || 'Select Subject'} | {selectedClass || 'Select Class'} | {selectedQuarter || 'Select Quarter'}</span>
+        </div>
+
         <div className="teacher-item-analysis-summary-box">
           <h3>Summary of Results</h3>
           <div className="teacher-summary-grid">
@@ -496,10 +529,13 @@ function ItemAnalysis() {
                 <span className="teacher-summary-label">{item.label}</span>
               </div>
             ))}
+            {summaryRows.length === 0 && (
+              <p className="teacher-status">No summary available.</p>
+            )}
           </div>
         </div>
 
-        <div className="teacher-item-analysis-top10-container" style={{ marginTop: '1.5rem' }}>
+        <div className="teacher-item-analysis-top10-container">
           <div className="teacher-table-wrap teacher-item-analysis-analysis-wrap">
             <h3>TOP 10 MOST LEARNED TEST ITEMS</h3>
             <table className="teacher-table teacher-item-analysis-analysis-table">

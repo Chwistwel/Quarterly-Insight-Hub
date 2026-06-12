@@ -8,14 +8,14 @@ import { Teachers, AllClasses } from './pages/ADMIN';
 import AdminProfile from './pages/ADMIN/AdminProfile';
 import AdminItemAnalysis from './pages/ADMIN/ItemAnalysis';
 import TeacherPerformance from './pages/ADMIN/TeacherPerformance';
-import AllReports from './pages/ADMIN/AllReports';
 import TeacherDashboard from './pages/TEACHER/Dashboard';
 import TeacherItemAnalysis from './pages/TEACHER/ItemAnalysis';
 import TeacherUploadResults from './pages/TEACHER/UploadResults';
-import TeacherMyReports from './pages/TEACHER/MyReports';
 import TeacherMyClasses from './pages/TEACHER/MyClasses';
 import TeacherStudentManagement from './pages/TEACHER/StudentManagement';
 import TeacherTOSBuilder from './pages/TEACHER/TOSBuilder';
+import TeacherMyReports from './pages/TEACHER/MyReports';
+import AllReports from './pages/ADMIN/AllReports';
 
 type ThemeMode = 'light' | 'dark';
 type UserRole = 'teacher' | 'administrator';

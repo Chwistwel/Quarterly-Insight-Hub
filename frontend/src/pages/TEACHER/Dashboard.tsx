@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import TeacherLayout from './TeacherLayout';
 import { getDashboardData, type DashboardResponse } from '../../services/teacherPortalApi';
 import '../../styles/TEACHER/Dashboard.css';
@@ -11,6 +11,7 @@ function Dashboard() {
 	const [selectedQuarter, setSelectedQuarter] = useState('');
 	const [appliedGrade, setAppliedGrade] = useState('');
 	const [appliedQuarter, setAppliedQuarter] = useState('');
+	const isInitialLoad = useRef(true);
 
 	useEffect(() => {
 		const load = async () => {
@@ -20,12 +21,15 @@ function Dashboard() {
 			try {
 				const response = await getDashboardData(appliedGrade, appliedQuarter);
 				setData(response);
-				const nextGrade = response.selectedGrade ?? response.filters?.grades?.[0] ?? '';
-				const nextQuarter = response.selectedQuarter !== undefined ? response.selectedQuarter : response.filters?.quarters?.[0] ?? '';
-				setSelectedGrade(nextGrade);
-				setSelectedQuarter(nextQuarter);
-				setAppliedGrade(nextGrade);
-				setAppliedQuarter(nextQuarter);
+				if (isInitialLoad.current) {
+					const nextGrade = response.selectedGrade ?? response.filters?.grades?.[0] ?? '';
+					const nextQuarter = response.selectedQuarter !== undefined ? response.selectedQuarter : response.filters?.quarters?.[0] ?? '';
+					setSelectedGrade(nextGrade);
+					setSelectedQuarter(nextQuarter);
+					setAppliedGrade(nextGrade);
+					setAppliedQuarter(nextQuarter);
+					isInitialLoad.current = false;
+				}
 			} catch (loadError) {
 				setData(null);
 				setError(loadError instanceof Error ? loadError.message : 'Unable to load dashboard data.');

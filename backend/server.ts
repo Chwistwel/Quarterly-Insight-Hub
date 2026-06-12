@@ -1404,7 +1404,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
             if (isDatabaseReady()) {
                 uploads = await prisma.teacherItemAnalysis.findMany({
                     where: { teacherEmail: normalizedTeacherEmail },
-                    orderBy: { timestamp: 'desc' }
+                    orderBy: [{ timestamp: 'desc' }]
                 }) as unknown as Array<Record<string, unknown>>;
 
                 const quartersFromUploads = Array.from(
@@ -1624,20 +1624,16 @@ app.get('/teacher/item-analysis', async (req: Request, res: Response) => {
             const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
             const uploads = await prisma.teacherItemAnalysis.findMany({
                 where: { teacherEmail: normalizedTeacherEmail },
-                orderBy: { timestamp: 'desc' }
+                orderBy: [{ timestamp: 'desc' }]
             }) as unknown as Array<Record<string, unknown>>;
 
             const teacherDisplayName = teacherAccount ? getTeacherDisplayNameFromUser(teacherAccount) : '';
-            const assignedClassName = String(teacherAccount?.className ?? '').trim();
             const classRecords = teacherDisplayName
-                ? await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: { gradeLevel: 'asc', section: 'asc' } })
+                ? await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: [{ gradeLevel: 'asc' }, { section: 'asc' }] })
                 : [];
-            const filteredClassRecords = assignedClassName
-                ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
-                : classRecords;
-            const classOptions = filteredClassRecords.length
-                ? filteredClassRecords.map((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section))
-                : (assignedClassName ? [assignedClassName] : []);
+            const classOptions = classRecords.length
+                ? classRecords.map((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section))
+                : [];
 
             const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)
                 ? selectedClassQuery
@@ -2253,10 +2249,8 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
         }
 
         const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
-        const assignedClassName = String((fallbackTeacher as { className?: string }).className ?? '').trim();
         const classRecords = Array.from(memoryClasses.values())
             .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase())
-            .filter((classItem) => !assignedClassName || buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
             .map((classItem) => ({
                 id: classItem.id,
                 grade: classItem.gradeLevel,
@@ -2301,12 +2295,8 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
         }
 
         const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
-        const assignedClassName = String(teacherAccount.className ?? '').trim();
-        const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: { gradeLevel: 'asc', section: 'asc' } });
-        const filteredClassRecords = assignedClassName
-            ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
-            : classRecords;
-        const classIds = filteredClassRecords.map((classItem) => String(classItem.id ?? `${classItem.className}-${classItem.section}`));
+        const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName }, orderBy: [{ gradeLevel: 'asc' }, { section: 'asc' }] });
+        const classIds = classRecords.map((classItem) => String(classItem.id ?? `${classItem.className}-${classItem.section}`));
         const studentsForCount = await prisma.student.findMany({
             where: {
                 teacherEmail: normalizedTeacherEmail,
@@ -2320,7 +2310,7 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
             studentCountMap.set(student.classId, count + 1);
         }
 
-        const classes = filteredClassRecords.map((classItem) => {
+        const classes = classRecords.map((classItem) => {
             const classId = String(classItem.id ?? `${classItem.className}-${classItem.section}`);
 
             return {
@@ -2661,7 +2651,7 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
             filter.classId = classId;
         }
 
-        const studentRecords = await prisma.student.findMany({ where: filter, orderBy: { name: 'asc' } });
+        const studentRecords = await prisma.student.findMany({ where: filter, orderBy: [{ name: 'asc' }] });
         const students = studentRecords.map((student) => ({
             ...parseNameParts(student.name),
             id: String(student.id ?? `${student.classId}-${student.name}`),
@@ -4207,7 +4197,7 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             .sort((first, second) => first.localeCompare(second));
 
         const uploads = await prisma.teacherItemAnalysis.findMany({
-            orderBy: { timestamp: 'desc' }
+            orderBy: [{ timestamp: 'desc' }]
         }) as unknown as Array<Record<string, unknown>>;
 
         const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)

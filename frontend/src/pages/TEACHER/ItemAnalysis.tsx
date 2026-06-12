@@ -1297,7 +1297,7 @@ function ItemAnalysis() {
 
 		</div>
 
-				<div className="teacher-item-analysis-top10-container">
+		<div className="teacher-item-analysis-top10-container">
 					<div className="teacher-table-wrap teacher-item-analysis-analysis-wrap">
 						<h3>TOP 10 MOST LEARNED TEST ITEMS</h3>
 						<table className="teacher-table teacher-item-analysis-analysis-table">

@@ -195,7 +195,7 @@ function UploadResults() {
 							<label>
 								Quarter
 								<select value={selectedQuarter} onChange={handleQuarterChange}>
-									<option value="" disabled>Select grade</option>
+									<option value="" disabled>Select quarter</option>
 									{(data?.quarters ?? []).map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
 								</select>
 							</label>

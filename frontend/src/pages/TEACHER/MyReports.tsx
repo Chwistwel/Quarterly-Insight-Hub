@@ -13,6 +13,60 @@ import {
 import { findLinkedTosRecord } from '../../services/tosStorage';
 import '../../styles/TEACHER/MyReports.css';
 
+type DecisionLabel =
+  | 'Accepted as it is'
+  | 'Accepted with very slight revision'
+  | 'Accepted with slight revision'
+  | 'May be accepted with minor revision'
+  | 'Major revision on the stem or choices'
+  | 'Needs major revision or may be discarded'
+  | 'Totally discard';
+
+const DECISION_ORDER: DecisionLabel[] = [
+  'Accepted as it is',
+  'Accepted with very slight revision',
+  'Accepted with slight revision',
+  'May be accepted with minor revision',
+  'Major revision on the stem or choices',
+  'Needs major revision or may be discarded',
+  'Totally discard'
+];
+
+const SCHOOL_LOGO_LEFT = '';
+const SCHOOL_LOGO_RIGHT = '';
+const SCHOOL_REGION = 'Department of Education - Region III';
+const SCHOOL_DIVISION = 'Division of OLONGAPO';
+const SCHOOL_DISTRICT = 'District IV - A';
+const SCHOOL_NAME = 'KALALAKE ELEMENTARY SCHOOL';
+
+function parseIndexValue(value: string | number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1 ? value / 100 : value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/%/g, '').trim();
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return parsed > 1 ? parsed / 100 : parsed;
+  }
+  return null;
+}
+
+function computeDecision(difficultyValue: string | number, discriminationValue: string | number): DecisionLabel {
+  const diff = parseIndexValue(difficultyValue) ?? -1;
+  const disc = parseIndexValue(discriminationValue) ?? -1;
+  if (diff < 0 || disc < 0) return 'Totally discard';
+  if (diff >= 0.85 && disc >= 0.4) return 'Accepted as it is';
+  if (diff >= 0.7 && disc >= 0.3) return 'Accepted with very slight revision';
+  if (diff >= 0.45 && disc >= 0.2) return 'Accepted with slight revision';
+  if (diff >= 0.2 && disc >= 0.1) return 'May be accepted with minor revision';
+  if (diff >= 0.2 && disc >= 0) return 'Major revision on the stem or choices';
+  if (diff >= 0.05 || disc >= -0.05) return 'Needs major revision or may be discarded';
+  return 'Totally discard';
+}
+
 type DifficultyBand = 'Very Easy' | 'Easy' | 'Moderately Difficult' | 'Difficult' | 'Very Difficult';
 type DiscriminationBand = 'Very Discriminating' | 'Discriminating' | 'Moderately Discriminating' | 'Slightly Discriminating' | 'Not Discriminating';
 
@@ -130,7 +184,6 @@ function MyReports() {
 	const [selectedSubject, setSelectedSubject] = useState('');
 	const [selectedQuarter, setSelectedQuarter] = useState('');
 	const [loading, setLoading] = useState(true);
-	const [generatingReport, setGeneratingReport] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [reportError, setReportError] = useState<string | null>(null);
 	const resolvedClass = (itemAnalysisData?.selectedClass ?? selectedClass).trim();
@@ -364,23 +417,188 @@ function MyReports() {
 		);
 	};
 
-	const handleGenerateReport = async () => {
-		setGeneratingReport(true);
-		setReportError(null);
+	function downloadWordFile(fileName: string, htmlContent: string) {
+		const style = `
+			table { border-collapse: collapse; font-family: 'Times New Roman', Times, serif; font-size: 11pt; }
+			th, td { border: 1px solid #000; padding: 4px 8px; text-align: center; vertical-align: top; }
+			th { background: #d9e1f2; font-weight: 700; }
+			td.left { text-align: left; }
+			.title { font-size: 16pt; font-weight: 700; text-align: center; margin-bottom: 4px; }
+			.meta { font-size: 10pt; text-align: center; margin-bottom: 12px; color: #555; }
+			.section { font-size: 13pt; font-weight: 700; margin-top: 18px; margin-bottom: 6px; }
+			.subsection { font-size: 11pt; font-weight: 700; margin-top: 12px; margin-bottom: 4px; }
+			.summary-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+			.summary-card { border: 1px solid #000; padding: 4px 8px; text-align: center; min-width: 120px; }
+			.summary-card .count { font-size: 14pt; font-weight: 700; display: block; }
+			.summary-card .label { font-size: 8pt; display: block; }
+			.score-summary { font-size: 10pt; margin-top: 6px; margin-bottom: 12px; }
+			.footer { text-align: center; font-size: 9pt; margin-top: 20px; color: #888; }
+		`;
+		const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${style}</style></head><body>${htmlContent}</body></html>`;
+		const blob = new Blob([fullHtml], { type: 'application/msword' });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = fileName;
+		document.body.appendChild(anchor);
+		anchor.click();
+		document.body.removeChild(anchor);
+		URL.revokeObjectURL(url);
+	}
 
-		try {
-			const [analysisPayload, studentsPayload] = await Promise.all([
-				getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
-				getStudentManagementData()
-			]);
 
-			setItemAnalysisData(analysisPayload);
-			setStudents(studentsPayload.students ?? []);
-		} catch (loadError) {
-			setReportError(loadError instanceof Error ? loadError.message : 'Unable to build print report.');
-		} finally {
-			setGeneratingReport(false);
+
+	const handleGenerateWordReport = async () => {
+		let data = itemAnalysisData;
+		const filterKey = `${selectedClass}|${selectedSubject}|${selectedQuarter}`;
+		const lastFilter = sessionStorage.getItem('wordReportFilter');
+		if (!data?.rows?.length || lastFilter !== filterKey) {
+			try {
+				const [analysisPayload, studentsPayload] = await Promise.all([
+					getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
+					getStudentManagementData()
+				]);
+				setItemAnalysisData(analysisPayload);
+				setStudents(studentsPayload.students ?? []);
+				sessionStorage.setItem('wordReportFilter', filterKey);
+				data = analysisPayload;
+			} catch {
+				return;
+			}
 		}
+		const rows = data?.rows ?? [];
+		if (!rows.length) return;
+
+		const schoolYear = new Date().getFullYear();
+		const classLabel = resolvedClass || 'N/A';
+		const parsedClass = parseClassLabel(classLabel);
+		const gradeSection = parsedClass.section ? `${parsedClass.grade}/${parsedClass.section}` : classLabel;
+
+		const decisionCounts = new Map<DecisionLabel, number>();
+		DECISION_ORDER.forEach((label) => decisionCounts.set(label, 0));
+		rows.forEach((row) => {
+			const label = computeDecision(row.difficultyIndex, row.discriminationIndex);
+			decisionCounts.set(label, (decisionCounts.get(label) ?? 0) + 1);
+		});
+		const summaryCards = DECISION_ORDER.map((label) => {
+			const count = decisionCounts.get(label) ?? 0;
+			return count > 0 ? `<div class="summary-card"><span class="count">${count}</span><span class="label">${label}</span></div>` : '';
+		}).filter(Boolean).join('');
+
+		const numItems = rows.length;
+		const analysisRows = rows.map((row, i) => {
+			const itemNo = Number(row.itemNo) || i + 1;
+			const diff = parseIndexValue(row.difficultyIndex) ?? 0;
+			const disc = parseIndexValue(row.discriminationIndex) ?? 0;
+			const difficultyLabel = row.difficultyLabel || getDifficultyLabel(diff);
+			const decision = computeDecision(row.difficultyIndex, row.discriminationIndex);
+			return `<tr><td>${itemNo}</td><td>${diff.toFixed(2)}</td><td>${difficultyLabel}</td><td>${disc.toFixed(2)}</td><td>${row.result || row.interpretation || ''}</td><td>${row.interpretation || ''}</td><td>${decision}</td></tr>`;
+		}).join('');
+
+		const sortedRows = [...(data?.rows ?? [])].map((r, i) => ({
+			itemNo: Number(r.itemNo) || i + 1,
+			diffValue: parseIndexValue(r.difficultyIndex) ?? 0
+		})).sort((a, b) => b.diffValue - a.diffValue);
+		const mostLearned = sortedRows.slice(0, 10);
+		const leastLearned = [...sortedRows].reverse().slice(0, 10);
+
+		const mostRows = mostLearned.map((item) => {
+			return `<tr><td>${item.itemNo}</td><td class="left">-</td></tr>`;
+		}).join('');
+
+		const leastRows = leastLearned.map((item) => {
+			return `<tr><td>${item.itemNo}</td><td class="left">-</td></tr>`;
+		}).join('');
+
+		const scores = (data?.studentResults ?? data?.studentItemResults ?? [])
+			.map((r) => Number(r.totalScore))
+			.filter((s) => Number.isFinite(s));
+		const analysisScores = scores.length > 0 ? {
+			highest: Math.max(...scores).toFixed(1),
+			lowest: Math.min(...scores).toFixed(1),
+			mean: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2),
+			mps: numItems > 0 ? ((scores.reduce((a, b) => a + b, 0) / scores.length) / numItems * 100).toFixed(2) : '0.00',
+			total: scores.reduce((a, b) => a + b, 0).toFixed(0),
+			passing: scores.filter((s) => s >= Math.ceil(numItems / 2)).length,
+			failing: scores.filter((s) => s < Math.ceil(numItems / 2)).length
+		} : null;
+
+		const logoLeft = SCHOOL_LOGO_LEFT
+			? `<img src="${SCHOOL_LOGO_LEFT}" style="width:70px;height:70px;object-fit:contain;"/>`
+			: `<div style="width:70px;height:70px;border:1px solid #ccc;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#ccc;">Logo</div>`;
+		const logoRight = SCHOOL_LOGO_RIGHT
+			? `<img src="${SCHOOL_LOGO_RIGHT}" style="width:70px;height:70px;object-fit:contain;"/>`
+			: `<div style="width:70px;height:70px;border:1px solid #ccc;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#ccc;">Logo</div>`;
+
+		const now = new Date();
+		const html = `
+			<table style="width:100%;border:none;margin-bottom:6px;">
+				<tr style="border:none;">
+					<td style="border:none;width:85px;text-align:center;vertical-align:middle;">${logoLeft}</td>
+					<td style="border:none;text-align:center;vertical-align:middle;">
+						<div style="font-size:11pt;font-weight:700;">${SCHOOL_REGION}</div>
+						<div style="font-size:12pt;font-weight:700;">${SCHOOL_DIVISION}</div>
+						<div style="font-size:11pt;font-weight:700;">${SCHOOL_DISTRICT}</div>
+						<div style="font-size:13pt;font-weight:700;margin-top:4px;">${SCHOOL_NAME}</div>
+						<div style="font-size:11pt;font-weight:700;margin-top:6px;">Item Analysis in ${resolvedSubject || 'N/A'} for ${gradeSection}</div>
+						<div style="font-size:11pt;">SY ${schoolYear} - ${schoolYear + 1}</div>
+					</td>
+					<td style="border:none;width:85px;text-align:center;vertical-align:middle;">${logoRight}</td>
+				</tr>
+			</table>
+
+			<hr style="border:1px solid #000;margin:4px 0;"/>
+
+			<div class="section">I. Item Analysis Matrix</div>
+			<table><thead><tr><th>Item No</th><th>Difficulty Index</th><th>Difficulty</th><th>Discrimination Index</th><th>Item Result</th><th>Interpretation</th><th>Decision</th></tr></thead><tbody>${analysisRows}</tbody></table>
+
+			${analysisScores ? `
+			<div class="score-summary">
+				<strong>Score Summary:</strong>
+				${analysisScores.highest} Highest Score | ${analysisScores.lowest} Lowest Score |
+				${analysisScores.mean} Mean | ${analysisScores.mps}% MPS |
+				${analysisScores.total} Total Score | ${analysisScores.passing} Passing |
+				${analysisScores.failing} Failing
+			</div>` : `
+			<div class="score-summary">
+				<strong>Class Performance:</strong> Total Items: ${numItems}
+			</div>`}
+
+			<div class="section">II. Summary of Results</div>
+			<div class="summary-grid">${summaryCards}</div>
+
+			<div class="section">III. Top 10 Most Learned Test Items</div>
+			<table><thead><tr><th>Item No</th><th>Content Area</th></tr></thead><tbody>${mostRows || '<tr><td colspan="2">No items available.</td></tr>'}</tbody></table>
+
+			<div class="section">IV. Top 10 Least Learned Test Items</div>
+			<table><thead><tr><th>Item No</th><th>Content Area</th><th>Intervention</th></tr></thead><tbody>${leastRows || '<tr><td colspan="3">No items available.</td></tr>'}</tbody></table>
+
+			<br/>
+			<table style="width:100%;border:none;margin-top:24px;">
+				<tr style="border:none;">
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Prepared by:</div>
+						<div style="font-size:10pt;margin-top:2px;">Signature of Adviser</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Noted by:</div>
+						<div style="font-size:10pt;margin-top:2px;">Signature of Principal</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Reviewed by:</div>
+						<div style="font-size:10pt;margin-top:2px;">Signature of Coordinator</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Approved by:</div>
+						<div style="font-size:10pt;margin-top:2px;">Signature of Supervisor</div>
+					</td>
+				</tr>
+			</table>
+
+			<div class="footer">Generated on ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | School Year ${schoolYear}-${schoolYear + 1}</div>
+		`;
+
+		downloadWordFile(`item-analysis-report_${contextToken}.doc`, html);
 	};
 
 	const hasReportData = reportRows.length > 0;
@@ -482,6 +700,32 @@ function MyReports() {
 		}
 	}, [availableSubjectOptions, selectedSubject]);
 
+	useEffect(() => {
+		if (!selectedClass || !selectedSubject || !selectedQuarter) return;
+		if (!uploadMeta) return;
+
+		const load = async () => {
+			setLoading(true);
+			setError(null);
+			try {
+				const [analysisPayload, studentsPayload] = await Promise.all([
+					getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
+					getStudentManagementData()
+				]);
+				setItemAnalysisData(analysisPayload);
+				setStudents(studentsPayload.students ?? []);
+			} catch (loadError) {
+				setItemAnalysisData(null);
+				setStudents([]);
+				setError(loadError instanceof Error ? loadError.message : 'Unable to load reports.');
+			} finally {
+				setLoading(false);
+			}
+		};
+
+		void load();
+	}, [selectedClass, selectedSubject, selectedQuarter]);
+
 	return (
 		<TeacherLayout title={data?.title ?? 'Reports'}>
 			<section className="teacher-dash-heading teacher-page-heading">
@@ -526,18 +770,15 @@ function MyReports() {
 							<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
 						))}
 					</select>
-					<button type="button" className="teacher-filter-apply-btn" onClick={handleGenerateReport} disabled={generatingReport}>
-						{generatingReport ? 'Generating...' : 'Generate'}
-					</button>
-				</div>
+					</div>
 			</section>
 
 			<div className="reports-action-grid no-print">
 				<article className="reports-action-card">
-					<h3>Executive Summary</h3>
-					<p>Generate an updated class summary based on selected filters.</p>
-					<button type="button" onClick={handleGenerateReport} disabled={generatingReport}>
-						{generatingReport ? 'Generating...' : 'Generate Report'}
+					<h3>Executive Summary (DOCS)</h3>
+					<p>Same complete report in Microsoft Word document format. Ideal for printing and submission.</p>
+					<button type="button" onClick={handleGenerateWordReport} disabled={!itemAnalysisData?.rows?.length}>
+						Download DOCS
 					</button>
 				</article>
 				<article className="reports-action-card green">
