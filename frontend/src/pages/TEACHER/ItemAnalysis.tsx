@@ -664,19 +664,6 @@ function ItemAnalysis() {
 		return DECISION_ORDER.map((label) => ({ label, count: summary.get(label) ?? 0 }));
 	}, [data?.rows]);
 
-	const updateAnalysisEntryByItemNo = (itemNo: number, patch: Partial<TosAnalysisEntry>) => {
-		setAnalysisEntries((current) => {
-			const index = current.findIndex(e => e.itemNumber === itemNo);
-			if (index >= 0) {
-				const copy = [...current];
-				copy[index] = { ...copy[index], ...patch };
-				return copy;
-			} else {
-				return [...current, { ...createAnalysisEntry(itemNo), ...patch }];
-			}
-		});
-	};
-
 	useEffect(() => {
 		const load = async () => {
 			setLoading(true);

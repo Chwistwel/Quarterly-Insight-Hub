@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { TrashIcon, PlusIcon, EditIcon, CloseIcon } from '../../components/icons';
+import { TrashIcon, PlusIcon, CloseIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
 import {
 	deleteTeacherTosHistoryEntry,
@@ -428,67 +428,8 @@ function TOSBuilder() {
 		navigate('/teacher/tos-builder/create');
 	};
 
-	const handleOpenSaved = () => {
-		const matched = tosCreatedOptions.combinations.find((entry) => (
-			(!landingClass || entry.classValue === landingClass)
-			&& (!landingSubject || entry.subject === landingSubject)
-			&& (!landingQuarter || entry.quarter === landingQuarter)
-		));
-
-		navigate('/teacher/tos-builder/create', {
-			state: {
-				prefill: {
-					schoolYear: matched?.schoolYear || '2025-2026',
-					classValue: landingClass,
-					subject: landingSubject,
-					quarter: landingQuarter || '1st Quarter'
-				}
-			}
-		});
-	};
-
 	const handleToggleBuilderPage = () => {
 		navigate(isCreatePage ? '/teacher/tos-builder' : '/teacher/tos-builder/create');
-	};
-
-	const handleDeleteLandingSaved = async () => {
-		if (!landingClass || !landingSubject || !landingQuarter || !landingBlueprint) {
-			return;
-		}
-
-		const shouldDelete = window.confirm('Delete the latest saved TOS for this class, subject, and quarter?');
-		if (!shouldDelete) {
-			return;
-		}
-
-		setLoadingLandingBlueprint(true);
-		try {
-			const query = { schoolYear: landingBlueprint.schoolYear, classValue: landingClass, subject: landingSubject, quarter: landingQuarter };
-
-			const history = await getTeacherTosBlueprintHistory(query);
-			const latestEntry = [...history].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())[0];
-			if (!latestEntry) {
-				setStatusMessage('No saved TOS version found to delete.');
-				return;
-			}
-
-			await deleteTeacherTosHistoryEntry(latestEntry.id);
-
-			const [nextBlueprint, nextHistory, refreshedOptions] = await Promise.all([
-				getTeacherTosBlueprint(query),
-				getTeacherTosBlueprintHistory(query),
-				getTeacherTosCreatedOptions()
-			]);
-
-			setLandingBlueprint(nextBlueprint ?? null);
-			setLandingHistoryCount(nextHistory.length);
-			setTosCreatedOptions(refreshedOptions);
-			setStatusMessage('Latest saved TOS version deleted.');
-		} catch (error) {
-			setStatusMessage(error instanceof Error ? error.message : 'Unable to delete the saved TOS version.');
-		} finally {
-			setLoadingLandingBlueprint(false);
-		}
 	};
 
 	useEffect(() => {

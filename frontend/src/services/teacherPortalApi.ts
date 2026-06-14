@@ -41,6 +41,8 @@ export type ItemAnalysisRow = {
 	difficultyIndex: number | string;
 	discriminationIndex: number | string;
 	interpretation: string;
+	difficultyLabel?: string;
+	result?: string;
 };
 
 export type ItemAnalysisResponse = {
