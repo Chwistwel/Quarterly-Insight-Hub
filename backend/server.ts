@@ -17,7 +17,7 @@ const DATABASE_URL = process.env.DATABASE_URL || '';
 // 3. Middleware
 // Allow the frontend to talk to the backend
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'https://knhs-insights.live', 'https://www.knhs-insights.live'],
     credentials: true
 }));
 // Parse incoming JSON data
