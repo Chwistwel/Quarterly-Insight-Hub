@@ -60,10 +60,12 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	};
 
 	const storedText = localStorage.getItem('userProfile');
-	let profile: { firstName?: string; lastName?: string; role?: string } | null = null;
-	if (storedText) {
-		try { profile = JSON.parse(storedText) as typeof profile; } catch { profile = null; }
-	}
+	const profile: { firstName?: string; lastName?: string; role?: string } | null = (() => {
+		if (storedText) {
+			try { return JSON.parse(storedText) as { firstName?: string; lastName?: string; role?: string }; } catch { return null; }
+		}
+		return null;
+	})();
 	const displayName = [profile?.firstName?.trim(), profile?.lastName?.trim()].filter(Boolean).join(' ') || 'User';
 
 	const toggleSidebar = () => setSidebarOpen((prev) => !prev);

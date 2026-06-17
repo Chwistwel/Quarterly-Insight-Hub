@@ -474,17 +474,6 @@ function MyReports() {
 		const parsedClass = parseClassLabel(classLabel);
 		const gradeSection = parsedClass.section ? `${parsedClass.grade}/${parsedClass.section}` : classLabel;
 
-		const decisionCounts = new Map<DecisionLabel, number>();
-		DECISION_ORDER.forEach((label) => decisionCounts.set(label, 0));
-		rows.forEach((row) => {
-			const label = computeDecision(row.difficultyIndex, row.discriminationIndex);
-			decisionCounts.set(label, (decisionCounts.get(label) ?? 0) + 1);
-		});
-		const summaryCards = DECISION_ORDER.map((label) => {
-			const count = decisionCounts.get(label) ?? 0;
-			return count > 0 ? `<div class="summary-card"><span class="count">${count}</span><span class="label">${label}</span></div>` : '';
-		}).filter(Boolean).join('');
-
 		const numItems = rows.length;
 
 		const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();

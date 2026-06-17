@@ -44,7 +44,6 @@ export default function Header() {
   }
 
   const role = profile?.role || localStorage.getItem('userRole') as UserProfile['role'] | null;
-  const displayName = [profile?.firstName?.trim(), profile?.lastName?.trim()].filter(Boolean).join(' ') || (role === 'administrator' ? 'Admin' : 'Teacher');
 
   const handleLogout = () => {
     localStorage.removeItem('userRole');
