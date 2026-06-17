@@ -185,7 +185,7 @@ function MyReports() {
 	const [selectedQuarter, setSelectedQuarter] = useState('');
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [reportError, setReportError] = useState<string | null>(null);
+	const [reportError] = useState<string | null>(null);
 	const resolvedClass = (itemAnalysisData?.selectedClass ?? selectedClass).trim();
 	const resolvedSubject = (itemAnalysisData?.selectedSubject ?? selectedSubject).trim();
 	const resolvedQuarter = (itemAnalysisData?.selectedQuarter ?? selectedQuarter).trim();
