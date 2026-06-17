@@ -837,7 +837,6 @@ function TOSBuilder() {
 				<section className="teacher-dash-heading teacher-page-heading">
 					<p>TABLE OF SPECIFICATIONS AUTOMATION WORKSPACE</p>
 					<div className="teacher-heading-row teacher-tos-heading-row">
-						<h2>Table of Specifications</h2>
 					<button type="button" className="teacher-pill-btn" onClick={handleLandingCreate}>
 						<PlusIcon className="teacher-btn-icon" />
 						Create
@@ -1001,7 +1000,6 @@ function TOSBuilder() {
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>TABLE OF SPECIFICATIONS AUTOMATION WORKSPACE</p>
 				<div className="teacher-heading-row teacher-tos-heading-row">
-					<h2>Table of Specifications</h2>
 					<div className="teacher-tos-heading-actions">
 						<span className={`teacher-tos-status ${automatedReadiness ? 'ready' : 'draft'}`}>
 							{automatedReadiness ? 'Ready for Exam Blueprint' : 'Draft in Progress'}

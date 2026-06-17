@@ -134,6 +134,38 @@
   font-size: 0.98rem;
 }
 
+.auth-email-field {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--home-border);
+  background: var(--home-surface);
+  overflow: hidden;
+}
+
+.auth-email-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--home-text);
+  padding: 0 0 0 0.7rem;
+  font-size: 0.98rem;
+  outline: none;
+}
+
+.auth-email-suffix {
+  flex-shrink: 0;
+  padding: 0 0.7rem 0 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--home-text-soft);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .auth-password-field {
   position: relative;
   display: flex;

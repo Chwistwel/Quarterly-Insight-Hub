@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LogOutIcon, UserIcon, MenuIcon, CloseIcon } from '../../components/icons';
-
-type StoredUserProfile = {
-	firstName?: string;
-	lastName?: string;
-	role?: 'teacher' | 'administrator';
-	email?: string;
-};
+import { LogOutIcon, MenuIcon } from '../../components/icons';
+import Header from '../../components/Header';
+import '../../styles/Header.css';
 
 const DashboardIcon = () => (
 	<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -55,21 +50,6 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const navigate = useNavigate();
 	const location = useLocation();
-	const storedProfileText = localStorage.getItem('userProfile');
-	let storedProfile: StoredUserProfile | null = null;
-
-	if (storedProfileText) {
-		try {
-			storedProfile = JSON.parse(storedProfileText) as StoredUserProfile;
-		} catch {
-			storedProfile = null;
-		}
-	}
-
-	const fullName = [storedProfile?.firstName?.trim(), storedProfile?.lastName?.trim()]
-		.filter((value): value is string => Boolean(value))
-		.join(' ');
-	const displayName = fullName || 'Teacher';
 	const isAnalysisRoute = location.pathname.startsWith('/teacher/item-analysis') || location.pathname.startsWith('/teacher/tos-builder');
 
 	const handleLogout = () => {
@@ -79,28 +59,30 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 		navigate('/');
 	};
 
+	const storedText = localStorage.getItem('userProfile');
+	let profile: { firstName?: string; lastName?: string; role?: string } | null = null;
+	if (storedText) {
+		try { profile = JSON.parse(storedText) as typeof profile; } catch { profile = null; }
+	}
+	const displayName = [profile?.firstName?.trim(), profile?.lastName?.trim()].filter(Boolean).join(' ') || 'User';
+
 	const toggleSidebar = () => setSidebarOpen((prev) => !prev);
 
-	return (
-		<>
-			<div className={`teacher-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
+  return (
+    <>
+      <Header />
+      <div className={`teacher-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
 				<aside className={`teacher-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
-					<div className="teacher-profile-header">
-						<div className="teacher-profile">
-							<div className="teacher-avatar"><UserIcon className="layout-avatar-icon" /></div>
-							<div>
-								<h2>{displayName}</h2>
-								<p>Teacher</p>
-							</div>
-						</div>
+					<div className="teacher-sidebar-header-row">
 						<button
 							type="button"
 							className="teacher-sidebar-close"
 							onClick={toggleSidebar}
 							aria-label="Toggle sidebar"
 						>
-							{sidebarOpen ? <CloseIcon className="teacher-sidebar-close-icon" /> : <MenuIcon className="teacher-sidebar-close-icon" />}
+							<MenuIcon className="teacher-sidebar-close-icon" />
 						</button>
+						<span className="teacher-sidebar-user">{displayName}</span>
 					</div>
 
 					<nav className="teacher-menu" aria-label="Teacher navigation">
@@ -132,14 +114,12 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 				</aside>
 
 				<section className="teacher-main">
-					{actions ? (
-						<header className="teacher-main-header">
-							<div>
-								<h1>{title}</h1>
-							</div>
-							<div className="teacher-main-actions">{actions}</div>
-						</header>
-					) : null}
+					<header className="teacher-main-header">
+						<div>
+							<h1>{title}</h1>
+						</div>
+						{actions && <div className="teacher-main-actions">{actions}</div>}
+					</header>
 					{children}
 				</section>
 			</div>

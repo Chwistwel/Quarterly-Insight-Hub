@@ -1,15 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { CloseIcon, LogOutIcon, MenuIcon, UserIcon } from '../../components/icons';
-import '../../styles/ADMIN/SchoolOverview.css';
-
-type StoredUserProfile = {
-  firstName?: string;
-  lastName?: string;
-  role?: 'teacher' | 'administrator';
-  email?: string;
-};
+import { LogOutIcon, MenuIcon } from '../../components/icons';
+import Header from '../../components/Header';
+import '../../styles/Header.css';
 
 const OverviewIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -67,28 +61,13 @@ const ReportsIcon = () => (
 type AdminLayoutProps = {
   title: string;
   kicker: string;
+  actions?: ReactNode;
   children: ReactNode;
 };
 
-function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
+function AdminLayout({ title, kicker, actions, children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
-  const storedProfileText = localStorage.getItem('userProfile');
-  let storedProfile: StoredUserProfile | null = null;
-
-  if (storedProfileText) {
-    try {
-      storedProfile = JSON.parse(storedProfileText) as StoredUserProfile;
-    } catch {
-      storedProfile = null;
-    }
-  }
-
-  const fullName = [storedProfile?.firstName?.trim(), storedProfile?.lastName?.trim()]
-    .filter((value): value is string => Boolean(value))
-    .join(' ');
-  const displayName = fullName || 'Administrator';
-  const roleLabel = storedProfile?.role === 'administrator' ? 'Administrator' : 'Principal';
 
   const handleLogout = () => {
     localStorage.removeItem('userRole');
@@ -97,31 +76,30 @@ function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
     navigate('/');
   };
 
+  const storedText = localStorage.getItem('userProfile');
+  let profile: { firstName?: string; lastName?: string; role?: string } | null = null;
+  if (storedText) {
+    try { profile = JSON.parse(storedText) as typeof profile; } catch { profile = null; }
+  }
+  const displayName = [profile?.firstName?.trim(), profile?.lastName?.trim()].filter(Boolean).join(' ') || 'User';
+
   const toggleSidebar = () => setSidebarOpen((previous) => !previous);
 
   return (
     <>
+      <Header />
       <div className={`admin-workspace ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
         <aside className={`admin-sidebar ${!sidebarOpen ? 'closed' : ''}`}>
-          <div className="admin-profile-header">
-            <NavLink to="/admin/profile" className={({ isActive }) => `admin-profile-link${isActive ? ' active' : ''}`}>
-              <div className="admin-profile">
-                <div className="admin-avatar"><UserIcon className="layout-avatar-icon" /></div>
-                <div>
-                  <h2>{displayName}</h2>
-                  <p>{roleLabel}</p>
-                </div>
-              </div>
-            </NavLink>
-
+          <div className="admin-sidebar-header-row">
             <button
               type="button"
               className="admin-sidebar-close"
               onClick={toggleSidebar}
               aria-label="Toggle sidebar"
             >
-              {sidebarOpen ? <CloseIcon className="admin-sidebar-close-icon" /> : <MenuIcon className="admin-sidebar-close-icon" />}
+              <MenuIcon className="admin-sidebar-close-icon" />
             </button>
+            <span className="admin-sidebar-user">{displayName}</span>
           </div>
 
           <nav className="admin-menu" aria-label="Administrator navigation">
@@ -159,11 +137,14 @@ function AdminLayout({ title, kicker, children }: AdminLayoutProps) {
 
         <section className="admin-main">
           <header className="admin-page-head">
-            <p>{kicker}</p>
-            <div>
-              <h1>{title}</h1>
-              <span>Admin View</span>
+            <div className="admin-page-head-left">
+              <p>{kicker}</p>
+              <div>
+                <h1>{title}</h1>
+                <span>Admin View</span>
+              </div>
             </div>
+            {actions && <div className="admin-main-actions">{actions}</div>}
           </header>
           {children}
         </section>

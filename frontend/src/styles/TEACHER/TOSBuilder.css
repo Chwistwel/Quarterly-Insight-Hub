@@ -54,9 +54,9 @@
 	height: 40px;
 	min-width: 112px;
 	padding: 0 1rem;
-	border: 1px solid #263673;
+	border: 1px solid var(--accent);
 	border-radius: 999px;
-	background: #263673;
+	background: var(--accent);
 	color: #ffffff;
 	font-size: 0.82rem;
 	font-weight: 700;
@@ -65,8 +65,8 @@
 }
 
 .teacher-tos-toggle-btn:hover {
-	background: #1f2d63;
-	border-color: #1f2d63;
+	background: var(--accent-strong);
+	border-color: var(--accent-strong);
 }
 
 .teacher-tos-toggle-bar {
@@ -87,7 +87,7 @@
 	padding: 0.5rem 1.2rem;
 	border: none;
 	border-radius: 999px;
-	background: #263673;
+	background: var(--accent);
 	color: #ffffff;
 	font-size: 0.95rem;
 	font-weight: 500;
@@ -97,7 +97,7 @@
 }
 
 .teacher-pill-btn:hover {
-	background: #1f2d63;
+	background: var(--accent-strong);
 	box-shadow: 0 6px 16px rgba(38, 54, 115, 0.18);
 }
 
@@ -111,7 +111,7 @@
 
 .teacher-pill-btn.secondary {
 	background: #ffffff;
-	color: #263673;
+	color: var(--accent);
 	border: 1px solid #e5e7eb;
 }
 
@@ -414,10 +414,22 @@
 
 .teacher-tos-bar-fill {
 	width: 100%;
-	background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
 	border-radius: 8px 8px 0 0;
 	transition: height 0.24s ease;
 }
+
+.teacher-tos-bar-item:nth-child(1) .teacher-tos-bar-fill { background: var(--chart-1); }
+.teacher-tos-bar-item:nth-child(2) .teacher-tos-bar-fill { background: var(--chart-2); }
+.teacher-tos-bar-item:nth-child(3) .teacher-tos-bar-fill { background: var(--chart-3); }
+.teacher-tos-bar-item:nth-child(4) .teacher-tos-bar-fill { background: var(--chart-4); }
+.teacher-tos-bar-item:nth-child(5) .teacher-tos-bar-fill { background: var(--chart-5); }
+.teacher-tos-bar-item:nth-child(6) .teacher-tos-bar-fill { background: var(--chart-6); }
+.teacher-tos-bar-item:nth-child(7) .teacher-tos-bar-fill { background: var(--chart-7); }
+.teacher-tos-bar-item:nth-child(8) .teacher-tos-bar-fill { background: var(--chart-8); }
+.teacher-tos-bar-item:nth-child(9) .teacher-tos-bar-fill { background: var(--chart-9); }
+.teacher-tos-bar-item:nth-child(10) .teacher-tos-bar-fill { background: var(--chart-10); }
+.teacher-tos-bar-item:nth-child(11) .teacher-tos-bar-fill { background: var(--chart-11); }
+.teacher-tos-bar-item:nth-child(12) .teacher-tos-bar-fill { background: var(--chart-12); }
 
 .teacher-tos-bar-item strong {
 	font-size: 0.96rem;

@@ -1,5 +1,5 @@
 .teacher-sidebar {
-	min-height: 100vh;
+	min-height: 100%;
 	width: 100%;
 	max-width: 280px;
 	padding: 0.9rem 0.65rem;
@@ -7,8 +7,9 @@
 	background: var(--surface);
 	display: flex;
 	flex-direction: column;
-	position: relative;
-	height: 100vh;
+	position: sticky;
+	top: 0;
+	height: 100%;
 	transition: max-width 0.3s ease, padding 0.3s ease;
 }
 
@@ -55,7 +56,7 @@
 	width: 32px;
 	height: 32px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: 6px;
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
@@ -77,11 +78,36 @@
 	height: 1rem;
 }
 
+.teacher-sidebar-header-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0 0 0.85rem;
+}
+
+.teacher-sidebar.closed .teacher-sidebar-header-row {
+	justify-content: center;
+	padding: 0 0 0.85rem;
+}
+
+.teacher-sidebar-user {
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: var(--text-primary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.teacher-sidebar.closed .teacher-sidebar-user {
+	display: none;
+}
+
 .teacher-workspace {
 	display: grid;
 	--sidebar-width: 280px;
 	grid-template-columns: var(--sidebar-width) 1fr;
-	height: 100vh;
+	height: calc(100vh - 56px);
 	overflow: hidden;
 	background: var(--bg);
 	transition: grid-template-columns 0.2s ease, --sidebar-width 0.2s ease;
@@ -115,7 +141,7 @@
 .teacher-main {
 	padding: 1.25rem;
 	display: grid;
-	gap: 0.95rem;
+	gap: 0.9rem;
 	align-content: start;
 	grid-auto-rows: max-content;
 	overflow-y: auto;
@@ -205,7 +231,7 @@
 	text-decoration: none;
 	height: 40px;
 	border: 0;
-	border-radius: 11px;
+	border-radius: 6px;
 	background: transparent;
 	color: var(--text-secondary);
 	text-align: left;
@@ -214,6 +240,23 @@
 	font-weight: 600;
 	cursor: pointer;
 	transition: gap 0.3s ease;
+}
+
+.teacher-sidebar.closed .teacher-menu-item {
+	padding: 0;
+	justify-content: center;
+	gap: 0;
+	width: 40px;
+}
+
+.teacher-menu-item:hover {
+	background: var(--surface-soft);
+	color: var(--text-primary);
+}
+
+.teacher-menu-item.active {
+	background: var(--surface-soft);
+	color: var(--brand);
 }
 
 .teacher-sidebar.closed .teacher-menu-item {
@@ -255,11 +298,6 @@
 	margin-bottom: 0.15rem;
 }
 
-.teacher-menu-item.active {
-	background: #263673;
-	color: #ffffff;
-}
-
 .teacher-content-toggle-bar {
 	display: inline-flex;
 	align-items: center;
@@ -289,8 +327,8 @@
 }
 
 .teacher-content-toggle.active {
-	background: #263673;
-	border-color: #263673;
+	background: var(--accent);
+	border-color: var(--accent);
 	color: #ffffff;
 }
 
@@ -298,7 +336,7 @@
 	margin-top: auto;
 	height: 40px;
 	border: 0;
-	border-radius: 11px;
+	border-radius: 6px;
 	background: transparent;
 	color: var(--text-secondary);
 	text-align: left;
@@ -375,9 +413,9 @@
 .teacher-filter-apply-btn {
 	height: 38px;
 	min-width: 94px;
-	border: 1px solid #263673;
+	border: 1px solid var(--accent);
 	border-radius: 10px;
-	background: #263673;
+	background: var(--accent);
 	color: #ffffff;
 	padding: 0 0.8rem;
 	font-size: 0.84rem;
@@ -475,9 +513,21 @@
 
 .teacher-trend-bar {
 	width: 100%;
-	background: linear-gradient(180deg, var(--accent), var(--accent-strong));
 	border-radius: 6px 6px 0 0;
 }
+
+.teacher-trend-col:nth-child(1) .teacher-trend-bar { background: var(--chart-1); }
+.teacher-trend-col:nth-child(2) .teacher-trend-bar { background: var(--chart-2); }
+.teacher-trend-col:nth-child(3) .teacher-trend-bar { background: var(--chart-3); }
+.teacher-trend-col:nth-child(4) .teacher-trend-bar { background: var(--chart-4); }
+.teacher-trend-col:nth-child(5) .teacher-trend-bar { background: var(--chart-5); }
+.teacher-trend-col:nth-child(6) .teacher-trend-bar { background: var(--chart-6); }
+.teacher-trend-col:nth-child(7) .teacher-trend-bar { background: var(--chart-7); }
+.teacher-trend-col:nth-child(8) .teacher-trend-bar { background: var(--chart-8); }
+.teacher-trend-col:nth-child(9) .teacher-trend-bar { background: var(--chart-9); }
+.teacher-trend-col:nth-child(10) .teacher-trend-bar { background: var(--chart-10); }
+.teacher-trend-col:nth-child(11) .teacher-trend-bar { background: var(--chart-11); }
+.teacher-trend-col:nth-child(12) .teacher-trend-bar { background: var(--chart-12); }
 
 .teacher-trend-col small {
 	color: var(--text-secondary);
@@ -836,13 +886,18 @@
 		grid-template-columns: 80px 1fr;
 	}
 
-	.teacher-sidebar {
+	.teacher-sidebar,
+	.teacher-sidebar.closed {
 		max-width: 80px;
-		min-height: 100vh;
+		min-height: 100%;
 		border-right: 1px solid var(--border);
 		border-bottom: 0;
 		gap: 0;
 		padding: 0.75rem 0.35rem;
+	}
+
+	.teacher-sidebar-header-row {
+		justify-content: center;
 	}
 
 	.teacher-menu {
@@ -972,6 +1027,10 @@
 		display: none;
 	}
 
+	.teacher-sidebar-header-row {
+		display: none;
+	}
+
 	.teacher-menu,
 	.teacher-sidebar.closed .teacher-menu {
 		flex-direction: row;
@@ -992,7 +1051,7 @@
 		font-size: 0.6rem;
 		font-weight: 600;
 		width: auto;
-		border-radius: 8px;
+		border-radius: 6px;
 		justify-content: center;
 		text-align: center;
 	}
@@ -1098,7 +1157,7 @@
   background: #f3f6fd;
 }
 .menu-item.active {
-  background: #1f3368;
+  background: var(--accent-strong);
   color: #fff;
 }
 

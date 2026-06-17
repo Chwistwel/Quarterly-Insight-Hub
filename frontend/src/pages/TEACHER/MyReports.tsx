@@ -486,14 +486,35 @@ function MyReports() {
 		}).filter(Boolean).join('');
 
 		const numItems = rows.length;
+
+		const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();
+		(data?.studentItemResults ?? []).forEach((sr) => {
+			(sr.itemResults ?? []).forEach((ir) => {
+				const itemNo = Number(ir.itemNo);
+				if (!Number.isFinite(itemNo)) return;
+				const current = itemResultStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+				current.totalCount += 1;
+				if (String(ir.interpretation ?? '').trim().toLowerCase() === 'correct') {
+					current.correctCount += 1;
+				}
+				itemResultStats.set(itemNo, current);
+			});
+		});
+
 		const analysisRows = rows.map((row, i) => {
 			const itemNo = Number(row.itemNo) || i + 1;
 			const diff = parseIndexValue(row.difficultyIndex) ?? 0;
 			const disc = parseIndexValue(row.discriminationIndex) ?? 0;
 			const difficultyLabel = row.difficultyLabel || getDifficultyLabel(diff);
 			const decision = computeDecision(row.difficultyIndex, row.discriminationIndex);
-			return `<tr><td>${itemNo}</td><td>${diff.toFixed(2)}</td><td>${difficultyLabel}</td><td>${disc.toFixed(2)}</td><td>${row.result || row.interpretation || ''}</td><td>${row.interpretation || ''}</td><td>${decision}</td></tr>`;
+			const stats = itemResultStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+			const itemResult = stats.totalCount > 0 ? `${stats.correctCount}/${stats.totalCount}` : row.interpretation || '';
+			return `<tr><td>${itemNo}</td><td>${diff.toFixed(2)}</td><td>${difficultyLabel}</td><td>${disc.toFixed(2)}</td><td>${itemResult}</td><td>${row.interpretation || ''}</td><td>${decision}</td></tr>`;
 		}).join('');
+
+		const takers = (data?.studentItemResults ?? data?.studentResults ?? []).length;
+		const totalStudentsNum = Number(data?.totalStudents) || data?.studentIdentityLinks?.length || takers || 0;
+		const topBottomCount = takers > 0 ? Math.max(1, Math.round(takers * 0.27)) : 0;
 
 		const sortedRows = [...(data?.rows ?? [])].map((r, i) => ({
 			itemNo: Number(r.itemNo) || i + 1,
@@ -503,11 +524,16 @@ function MyReports() {
 		const leastLearned = [...sortedRows].reverse().slice(0, 10);
 
 		const mostRows = mostLearned.map((item) => {
-			return `<tr><td>${item.itemNo}</td><td class="left">-</td></tr>`;
+			const entry = selectedLinkedRecord?.analysisEntries[item.itemNo - 1];
+			const contentArea = entry?.contentArea || '-';
+			return `<tr><td>${item.itemNo}</td><td class="left">${contentArea}</td></tr>`;
 		}).join('');
 
 		const leastRows = leastLearned.map((item) => {
-			return `<tr><td>${item.itemNo}</td><td class="left">-</td></tr>`;
+			const entry = selectedLinkedRecord?.analysisEntries[item.itemNo - 1];
+			const contentArea = entry?.contentArea || '-';
+			const intervention = entry?.intervention || '-';
+			return `<tr><td>${item.itemNo}</td><td class="left">${contentArea}</td><td class="left">${intervention}</td></tr>`;
 		}).join('');
 
 		const scores = (data?.studentResults ?? data?.studentItemResults ?? [])
@@ -549,6 +575,23 @@ function MyReports() {
 
 			<hr style="border:1px solid #000;margin:4px 0;"/>
 
+			<table style="width:100%;border:none;margin:4px 0 8px;">
+				<tr style="border:none;">
+					<td style="border:none;width:50%;vertical-align:top;">
+						<table style="border-collapse:collapse;font-size:9pt;width:100%;">
+							<tr><td style="border:1px solid #000;padding:3px 6px;font-weight:700;background:#d9e1f2;" colspan="2">Summary</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">Total No. of Students</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${totalStudentsNum}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">Number of Takers</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${takers}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">No. of Highest Scorers (27%)</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${topBottomCount}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">No. of Lowest Scorers (27%)</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${topBottomCount}</td></tr>
+						</table>
+					</td>
+					<td style="border:none;width:50%;vertical-align:top;text-align:right;">
+						<div style="font-size:10pt;font-weight:700;margin-top:4px;">Quarter: ${resolvedQuarter || 'N/A'}</div>
+					</td>
+				</tr>
+			</table>
+
 			<div class="section">I. Item Analysis Matrix</div>
 			<table><thead><tr><th>Item No</th><th>Difficulty Index</th><th>Difficulty</th><th>Discrimination Index</th><th>Item Result</th><th>Interpretation</th><th>Decision</th></tr></thead><tbody>${analysisRows}</tbody></table>
 
@@ -564,33 +607,35 @@ function MyReports() {
 				<strong>Class Performance:</strong> Total Items: ${numItems}
 			</div>`}
 
-			<div class="section">II. Summary of Results</div>
-			<div class="summary-grid">${summaryCards}</div>
-
-			<div class="section">III. Top 10 Most Learned Test Items</div>
+			<div class="section">II. Top 10 Most Learned Test Items</div>
 			<table><thead><tr><th>Item No</th><th>Content Area</th></tr></thead><tbody>${mostRows || '<tr><td colspan="2">No items available.</td></tr>'}</tbody></table>
 
-			<div class="section">IV. Top 10 Least Learned Test Items</div>
+			<div class="section">III. Top 10 Least Learned Test Items</div>
 			<table><thead><tr><th>Item No</th><th>Content Area</th><th>Intervention</th></tr></thead><tbody>${leastRows || '<tr><td colspan="3">No items available.</td></tr>'}</tbody></table>
 
 			<br/>
-			<table style="width:100%;border:none;margin-top:24px;">
+			<div class="section">IV. Certification</div>
+			<table style="width:100%;border:none;margin-top:6px;">
 				<tr style="border:none;">
 					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
-						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Prepared by:</div>
-						<div style="font-size:10pt;margin-top:2px;">Signature of Adviser</div>
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Prepared by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">EUGENE F. DIMALANTA</div>
+						<div style="font-size:8pt;margin-top:1px;">SPET I</div>
 					</td>
 					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
-						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Noted by:</div>
-						<div style="font-size:10pt;margin-top:2px;">Signature of Principal</div>
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Reviewed &amp; Checked by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">WILLIAM D. GARCIA, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">Master Teacher I</div>
 					</td>
 					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
-						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Reviewed by:</div>
-						<div style="font-size:10pt;margin-top:2px;">Signature of Coordinator</div>
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Contents Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MILLETTE B. SARMIENTO, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">OIC-Asst. Principal</div>
 					</td>
 					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
-						<div style="margin-top:40px;border-top:1px solid #000;display:inline-block;padding:0 20px;font-size:10pt;font-weight:700;">Approved by:</div>
-						<div style="font-size:10pt;margin-top:2px;">Signature of Supervisor</div>
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MARCIAL D. MORTERA</div>
+						<div style="font-size:8pt;margin-top:1px;">Principal IV</div>
 					</td>
 				</tr>
 			</table>
@@ -731,7 +776,6 @@ function MyReports() {
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'REPORT GENERATION CENTER'}</p>
 				<div className="teacher-heading-row">
-					<h2>{data?.title ?? 'Reports'}</h2>
 					<span>{data?.viewLabel ?? 'Teacher View'}</span>
 				</div>
 			</section>

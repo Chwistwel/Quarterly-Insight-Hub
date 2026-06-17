@@ -33,7 +33,7 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: #263673;
+  background: var(--accent);
   color: #ffffff;
   display: grid;
   place-items: center;

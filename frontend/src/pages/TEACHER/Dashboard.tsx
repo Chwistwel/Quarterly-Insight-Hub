@@ -55,9 +55,6 @@ function Dashboard() {
 		<TeacherLayout title={data?.title ?? 'Dashboard'}>
 			<section className="teacher-dash-heading teacher-dash-heading-divider">
 				<p>{data?.systemLabel ?? 'QUARTERLY ITEM ANALYSIS AND ACADEMIC PERFORMANCE CONSOLIDATION SYSTEM'}</p>
-				<div>
-					<h2>{data?.title ?? 'Dashboard'}</h2>
-				</div>
 			</section>
 
 			<section className="teacher-filter-row">
@@ -118,6 +115,7 @@ function Dashboard() {
 									const barWidth = Math.min(60, step * 0.6);
 									const x = index * step + (step - barWidth) / 2;
 									
+									const palette = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac','#6a8da6','#d4a6c8'];
 									return (
 										<rect 
 											key={point.label}
@@ -125,7 +123,7 @@ function Dashboard() {
 											y={y} 
 											width={barWidth} 
 											height={barHeight} 
-											fill="var(--primary, #1e3a8a)" 
+											fill={palette[index % palette.length]} 
 											rx="4"
 										/>
 									);

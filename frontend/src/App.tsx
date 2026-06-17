@@ -1,6 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { type ReactElement, useEffect, useState } from 'react';
-import { MoonIcon, SunIcon } from './components/icons';
+import type { ReactElement } from 'react';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
 import SchoolOverview from './pages/ADMIN/SchoolOverview';
@@ -16,18 +15,11 @@ import TeacherStudentManagement from './pages/TEACHER/StudentManagement';
 import TeacherTOSBuilder from './pages/TEACHER/TOSBuilder';
 import TeacherMyReports from './pages/TEACHER/MyReports';
 import AllReports from './pages/ADMIN/AllReports';
+import About from './pages/About';
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
-type ThemeMode = 'light' | 'dark';
 type UserRole = 'teacher' | 'administrator';
-
-function getInitialTheme(): ThemeMode {
-  const storedTheme = localStorage.getItem('themeMode');
-  if (storedTheme === 'light' || storedTheme === 'dark') {
-    return storedTheme;
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
 
 function getStoredUserRole(): UserRole | null {
   const storedRole = localStorage.getItem('userRole');
@@ -53,13 +45,6 @@ function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; 
 }
 
 function App() {
-  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', themeMode);
-    localStorage.setItem('themeMode', themeMode);
-  }, [themeMode]);
-
   return (
     <BrowserRouter>
       <Routes>
@@ -82,17 +67,11 @@ function App() {
         <Route path="/admin/item-analysis" element={<ProtectedRoute allowedRoles={['administrator']}><AdminItemAnalysis /></ProtectedRoute>} />
         <Route path="/admin/teacher-performance" element={<ProtectedRoute allowedRoles={['administrator']}><TeacherPerformance /></ProtectedRoute>} />
         <Route path="/admin/all-reports" element={<ProtectedRoute allowedRoles={['administrator']}><AllReports /></ProtectedRoute>} />
+        <Route path="/about" element={<About />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-
-      <button
-        type="button"
-        className={`theme-toggle ${themeMode === 'light' ? 'theme-toggle--light' : 'theme-toggle--dark'}`}
-        onClick={() => setThemeMode((current) => (current === 'light' ? 'dark' : 'light'))}
-        aria-label={`Switch to ${themeMode === 'light' ? 'dark' : 'light'} mode`}
-      >
-        {themeMode === 'light' ? <MoonIcon className="theme-toggle-icon" /> : <SunIcon className="theme-toggle-icon" />}
-      </button>
     </BrowserRouter>
   );
 }

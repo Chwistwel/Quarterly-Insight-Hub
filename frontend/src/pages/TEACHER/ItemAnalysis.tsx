@@ -890,11 +890,6 @@ function ItemAnalysis() {
 		<TeacherLayout title={data?.title ?? 'Item Analysis'}>
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'COMPREHENSIVE ITEM ANALYSIS'}</p>
-				<div className="teacher-heading-row">
-					<div className="teacher-heading-title-group">
-						<h2>{data?.title ?? 'Item Analysis'}</h2>
-					</div>
-				</div>
 			</section>
 
 			<div className="teacher-content-toggle-bar" role="tablist" aria-label="Analysis tools">

@@ -48,7 +48,7 @@
 	height: 32px;
 	border: 1px solid var(--border-strong);
 	border-radius: 8px;
-	background: #263673;
+	background: var(--accent);
 	color: #ffffff;
 	font-weight: 700;
 	font-size: 0.78rem;

@@ -1,0 +1,124 @@
+.legal-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  --home-bg: #f4f7ff;
+  --home-surface: #ffffff;
+  --home-border: #d7dfee;
+  --home-text: #1e2f5a;
+  --home-text-soft: #6f7fa4;
+  --home-accent: #4b66d4;
+  --home-accent-strong: #2f4fbe;
+  background:
+    radial-gradient(circle at top left, rgba(75, 102, 212, 0.22), transparent 45%),
+    radial-gradient(circle at 20% 80%, rgba(111, 197, 210, 0.12), transparent 40%),
+    var(--home-bg);
+  color: var(--home-text);
+}
+
+:root[data-theme='dark'] .legal-page {
+  --home-bg: #141924;
+  --home-surface: #1c2333;
+  --home-border: rgba(205, 220, 255, 0.18);
+  --home-text: #e8eeff;
+  --home-text-soft: #b2bfdc;
+  --home-accent: #7c97ff;
+  --home-accent-strong: #5d7ef4;
+}
+
+.legal-topbar {
+  height: 76px;
+  padding: 0 6vw;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--home-border);
+  background: transparent;
+}
+
+.legal-back-link {
+  color: var(--home-accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.legal-back-link:hover {
+  text-decoration: underline;
+}
+
+.legal-content {
+  flex: 1;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2.8rem 6vw 3rem;
+}
+
+.legal-content h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 3.5vw, 2.8rem);
+  color: var(--home-text);
+}
+
+.legal-date {
+  color: var(--home-text-soft);
+  font-size: 0.9rem;
+  margin: 0 0 2rem;
+}
+
+.legal-content section {
+  margin-top: 1.8rem;
+}
+
+.legal-content h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.25rem;
+  color: var(--home-text);
+}
+
+.legal-content p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--home-text-soft);
+}
+
+.legal-content ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1.3rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.legal-content li {
+  line-height: 1.6;
+  color: var(--home-text-soft);
+}
+
+.legal-footer {
+  padding: 1.2rem 6vw;
+  background: #0d1b3b;
+  color: #c3cdef;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+:root[data-theme='dark'] .legal-footer {
+  background: #0b142c;
+}
+
+.legal-footer p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .legal-topbar {
+    height: auto;
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .legal-content {
+    padding: 1.5rem 1rem 2rem;
+  }
+}

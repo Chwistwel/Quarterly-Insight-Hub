@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TeacherLayout from './TeacherLayout';
-import { deleteTeacherClass, getMyClassesData, type TeacherClassSummary } from '../../services/teacherPortalApi';
-import { TrashIcon } from '../../components/icons';
+import { getMyClassesData, type TeacherClassSummary } from '../../services/teacherPortalApi';
 import '../../styles/TEACHER/MyClasses.css';
 
-function MyClasses() {
+	function MyClasses() {
 	const navigate = useNavigate();
 	const [classes, setClasses] = useState<TeacherClassSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
 
 	const loadClasses = async () => {
 		setLoading(true);
@@ -35,31 +33,10 @@ function MyClasses() {
 		navigate(`/teacher/student-management?classId=${encodeURIComponent(classId)}`);
 	};
 
-	const handleDeleteClass = async (classItem: TeacherClassSummary) => {
-		const confirmation = window.confirm(`Delete class ${classItem.grade} - ${classItem.section} (${classItem.subject})? This will also remove related students and item analysis records.`);
-		if (!confirmation) {
-			return;
-		}
-
-		try {
-			setDeletingClassId(classItem.id);
-			setError(null);
-			await deleteTeacherClass(classItem.id);
-			await loadClasses();
-		} catch (deleteError) {
-			setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete class record.');
-		} finally {
-			setDeletingClassId(null);
-		}
-	};
-
 	return (
 		<TeacherLayout title="Classes">
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>MANAGE CLASS SECTIONS</p>
-				<div className="teacher-heading-row">
-					<h2>Classes</h2>
-				</div>
 			</section>
 
 			{loading ? <p className="teacher-status">Loading classes...</p> : null}
@@ -84,15 +61,6 @@ function MyClasses() {
 						<div className="my-class-actions">
 							<button type="button" className="my-class-view-btn" onClick={() => handleViewClass(item.id)}>
 								View
-							</button>
-							<button
-								type="button"
-								className="my-class-delete-btn"
-								aria-label="Delete class"
-								onClick={() => handleDeleteClass(item)}
-								disabled={deletingClassId === item.id}
-							>
-								<TrashIcon className="ui-inline-icon" />
 							</button>
 						</div>
 					</article>

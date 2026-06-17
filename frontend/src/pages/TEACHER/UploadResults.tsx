@@ -152,7 +152,6 @@ function UploadResults() {
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'UPLOAD AND ANALYZE STUDENT PERFORMANCE DATA'}</p>
 				<div className="teacher-heading-row">
-					<h2>{data?.title ?? 'Upload Quarterly Exam Results'}</h2>
 					<button
 						type="button"
 						className="upload-exit-btn"

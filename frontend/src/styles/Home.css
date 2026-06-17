@@ -481,6 +481,19 @@
   color: #c3cdef;
 }
 
+.site-footer a {
+  display: block;
+  margin: 0.45rem 0 0;
+  color: #c3cdef;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.site-footer a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
 .footer-copy {
   margin-top: 1.1rem !important;
   padding-top: 0.9rem;

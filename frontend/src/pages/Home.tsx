@@ -18,10 +18,11 @@ function Home() {
       <main>
         <section className="hero" id="home">
           <div className="hero-content">
-            <h1>Quarterly Item Analysis & Academic Performance Consolidation</h1>
+            <h1>Item Analysis, TOS Builder & Performance Tracking</h1>
             <p>
-              A single system for teacher workflows and administrator oversight—from exam uploads
-              to item analysis, school-wide reporting, and quarterly performance monitoring.
+              A platform for teachers and administrators to upload exam results, build
+              Tables of Specifications, run item analysis, manage classes and students,
+              and monitor performance across quarters — all in one place.
             </p>
 
           </div>
@@ -55,27 +56,27 @@ function Home() {
         </section>
 
         <section className="workflow" id="workflow">
-          <h2>How Quarterly Insight Hub works</h2>
+          <h2>How the platform works</h2>
           <div className="step-grid">
             <article>
               <span>1</span>
-              <h3>Sign In</h3>
-              <p>Teachers and administrators securely access the platform.</p>
+              <h3>Build TOS</h3>
+              <p>Design assessment blueprints with Bloom&apos;s Taxonomy and topic distribution.</p>
             </article>
             <article>
               <span>2</span>
-              <h3>Upload Data</h3>
-              <p>Submit class results and assessment records per quarter.</p>
+              <h3>Upload Results</h3>
+              <p>Submit exam scores per class, subject, and quarter.</p>
             </article>
             <article>
               <span>3</span>
-              <h3>Analyze</h3>
-              <p>Generate item analysis and performance trends instantly.</p>
+              <h3>Analyze Items</h3>
+              <p>Evaluate item difficulty, discrimination, and distractor effectiveness.</p>
             </article>
             <article>
               <span>4</span>
-              <h3>Consolidate</h3>
-              <p>Review school-wide insights for data-driven planning.</p>
+              <h3>Review Reports</h3>
+              <p>Access dashboards, school-wide analytics, and performance summaries.</p>
             </article>
           </div>
         </section>
@@ -85,19 +86,19 @@ function Home() {
             <article>
               <h3>For Teachers</h3>
               <ul>
-                <li>Upload exam outcomes per class and subject.</li>
-                <li>View item-level difficulty and discrimination.</li>
-                <li>Monitor progress across grading periods.</li>
-                <li>Export class-level summaries for reporting.</li>
+                <li>Build Table of Specifications with Bloom&apos;s Taxonomy.</li>
+                <li>Upload and analyze exam results per class and subject.</li>
+                <li>Evaluate item difficulty, discrimination, and distractors.</li>
+                <li>Manage classes, students, and track quarterly progress.</li>
               </ul>
             </article>
             <article>
               <h3>For Administrators</h3>
               <ul>
-                <li>Track grade-level and school-wide indicators.</li>
-                <li>Compare performance trends across departments.</li>
-                <li>Identify learning gaps through analytics.</li>
-                <li>Use consolidated insights for planning actions.</li>
+                <li>View school-wide KPIs, grade averages, and pass rates.</li>
+                <li>Compare teacher performance and class outcomes.</li>
+                <li>Monitor item analysis trends across the school.</li>
+                <li>Generate consolidated reports for planning.</li>
               </ul>
             </article>
           </div>
@@ -111,15 +112,17 @@ function Home() {
             </div>
             <div>
               <h4>Modules</h4>
-              <p>Authentication</p>
+              <p>TOS Builder</p>
               <p>Item Analysis</p>
-              <p>Performance Monitoring</p>
+              <p>Class Management</p>
+              <p>School Analytics</p>
+              <p>Reports</p>
             </div>
             <div>
               <h4>Company</h4>
-              <p>About</p>
-              <p>Terms of Service</p>
-              <p>Privacy Policy</p>
+              <Link to="/about">About</Link>
+              <Link to="/terms-of-service">Terms of Service</Link>
+              <Link to="/privacy-policy">Privacy Policy</Link>
             </div>
           </div>
           <p className="footer-copy">© 2026 Quarterly Insights Hub. All rights reserved.</p>

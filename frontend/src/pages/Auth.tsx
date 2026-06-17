@@ -54,13 +54,15 @@ function Auth() {
     setSubmitting(true);
 
     try {
+      const email = formState.email.includes('@') ? formState.email : `${formState.email}@kalalake.edu.ph`;
+
       const response = await fetchJson<AuthResponse>('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          email: formState.email,
+          email,
           password: formState.password
         })
       });
@@ -85,15 +87,18 @@ function Auth() {
         <form className="auth-form" onSubmit={handleAuthSubmit}>
           <label>
             Email or Username
-            <input
-              type="text"
-              name="email"
-              required
-              value={formState.email}
-              onChange={handleInputChange}
-              placeholder="name@school.edu or admin"
-              autoComplete="username"
-            />
+            <div className="auth-email-field">
+              <input
+                type="text"
+                name="email"
+                required
+                value={formState.email}
+                onChange={handleInputChange}
+                placeholder="username"
+                autoComplete="username"
+              />
+              <span className="auth-email-suffix">@kalalake.edu.ph</span>
+            </div>
           </label>
 
           <label>

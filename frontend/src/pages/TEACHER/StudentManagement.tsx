@@ -803,9 +803,6 @@ function StudentManagement() {
 		<TeacherLayout title={data?.title ?? 'Student Management'}>
 			<section className="teacher-dash-heading teacher-page-heading">
 				<p>{data?.systemLabel ?? 'MANAGE YOUR STUDENTS'}</p>
-				<div className="teacher-heading-row">
-					<h2>{data?.title ?? 'Student Management'}</h2>
-				</div>
 			</section>
 
 
