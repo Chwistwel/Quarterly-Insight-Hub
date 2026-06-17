@@ -22,16 +22,6 @@ type DecisionLabel =
   | 'Needs major revision or may be discarded'
   | 'Totally discard';
 
-const DECISION_ORDER: DecisionLabel[] = [
-  'Accepted as it is',
-  'Accepted with very slight revision',
-  'Accepted with slight revision',
-  'May be accepted with minor revision',
-  'Major revision on the stem or choices',
-  'Needs major revision or may be discarded',
-  'Totally discard'
-];
-
 const SCHOOL_LOGO_LEFT = '';
 const SCHOOL_LOGO_RIGHT = '';
 const SCHOOL_REGION = 'Department of Education - Region III';
