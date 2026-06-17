@@ -641,7 +641,7 @@ function StudentManagement() {
 
 	const handleDownloadClassListTemplate = () => {
 		const itemColumns = Array.from({ length: 50 }, (_, index) => `Item ${index + 1}`);
-		const headerRow = ['Student ID', 'Student Name', ...itemColumns, 'Ranking'];
+		const headerRow = ['Student Name', ...itemColumns, 'Ranking'];
 		const emptyAssessmentColumns = itemColumns.map(() => '');
 
 		const dataRows = sortedStudents.map((student) => {
@@ -650,7 +650,6 @@ function StudentManagement() {
 			const fullName = [firstName, lastName].filter(Boolean).join(' ') || String(student.name ?? '').trim();
 
 			return [
-				student.studentSimpleId,
 				fullName,
 				...emptyAssessmentColumns,
 				''
@@ -659,7 +658,6 @@ function StudentManagement() {
 
 		const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
 		worksheet['!cols'] = [
-			{ wch: 14 },
 			{ wch: 24 },
 			...itemColumns.map(() => ({ wch: 10 })),
 			{ wch: 12 }
@@ -844,7 +842,7 @@ function StudentManagement() {
 							</label>
 
 							{uploadFileName ? <p className="student-upload-file-name">Selected: {uploadFileName}</p> : null}
-							<p className="student-upload-hint">Required columns: Firstname, Lastname. Optional: Gender, Student ID.</p>
+							<p className="student-upload-hint">Required columns: Firstname, Lastname. Optional: Gender.</p>
 
 							<button type="submit" className="teacher-primary-btn" disabled={uploadingClassList || (!activeClass && classOptions.length === 0)}>
 								{uploadingClassList ? 'Uploading...' : 'Upload and Auto Add Students'}

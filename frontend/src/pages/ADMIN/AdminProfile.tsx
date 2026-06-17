@@ -36,9 +36,7 @@ function getInitials(fullName: string): string {
 
 function AdminProfile() {
   const profile = getStoredAdminProfile();
-  const fullName = [profile.firstName?.trim(), profile.lastName?.trim()]
-    .filter((value): value is string => Boolean(value))
-    .join(' ') || 'Administrator';
+  const fullName = 'Administrator';
 
   const email = profile.email?.trim() || localStorage.getItem('userEmail') || 'Not available';
   const role = profile.role === 'administrator' ? 'Administrator' : 'Principal';

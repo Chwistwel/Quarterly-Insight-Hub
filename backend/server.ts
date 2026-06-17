@@ -196,7 +196,7 @@ type SchoolOverviewSummaryRow = {
     averageScore: number;
     students: number;
     passRate: number;
-    status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement';
+    status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement' | 'No Data';
 };
 
 type SchoolOverviewResponse = {
@@ -225,11 +225,11 @@ type AdminItemAnalysisRow = {
 
 type AdminItemAnalysisResponse = {
     title: string;
-    classOptions: string[];
-    classSubjectMap: Record<string, string[]>;
+    gradeOptions: string[];
+    gradeSubjectMap: Record<string, string[]>;
     subjectOptions: string[];
     quarterOptions: string[];
-    selectedClass: string;
+    selectedGrade: string;
     selectedSubject: string;
     selectedQuarter: string;
     classAverage: string;
@@ -574,6 +574,11 @@ function buildClassListItem(classItem: ClassRecord): ClassListItem {
 
 function buildClassLabel(gradeLevel: string, section: string): string {
     return `${gradeLevel} - ${section}`;
+}
+
+function extractGradeFromClassLabel(classLabel: string): string {
+    const parts = classLabel.split('-');
+    return parts[0]?.trim() ?? classLabel;
 }
 
 function parseTeacherDisplayName(teacherName: string): { firstName: string; lastName: string } {
@@ -2207,9 +2212,12 @@ app.post('/teacher/tos', async (req: Request, res: Response) => {
             });
         }
 
+        const { latestHistoryVersion: _unused, ...historyData } = record;
+        void _unused;
+
         await prisma.tosBlueprintHistory.create({
             data: {
-                ...record,
+                ...historyData,
                 version: nextVersion,
                 savedAt: savedAt.toISOString()
             }
@@ -3475,7 +3483,8 @@ app.post('/api/item-analysis/compute', upload.single('file'), async (req: Reques
                 teacherEmail: requesterEmail,
                 timestamp: new Date(),
                 studentIdentityLinks,
-                ...analysis
+                ...analysis,
+                totalStudents: studentIdentityLinks.length
             };
             const existingAnalysis = await prisma.teacherItemAnalysis.findFirst({
                 where: { class: classValue, subject, quarter: normalizedQuarter, teacherEmail: requesterEmail }
@@ -3654,7 +3663,7 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
                     averageScore,
                     students: values.students,
                     passRate,
-                    status: getStatusByScore(averageScore)
+                    status: values.weight ? getStatusByScore(averageScore) : 'No Data'
                 };
             })
             .sort((first, second) => {
@@ -3801,6 +3810,68 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
                 avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
                 passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
             });
+        }
+
+        // If no student-level scores exist, try to aggregate from teacher item analysis uploads
+        const hasStudentScores = Array.from(classPerformanceById.values()).some((c) => c.avgScore > 0);
+        if (!hasStudentScores) {
+            try {
+                const allUploads = await prisma.teacherItemAnalysis.findMany() as unknown as Array<Record<string, unknown>>;
+                const uploadsByClass = new Map<string, Array<Record<string, unknown>>>();
+                for (const up of allUploads) {
+                    const classLabel = String(up.class ?? '').trim();
+                    if (!classLabel) continue;
+                    const arr = uploadsByClass.get(classLabel) ?? [];
+                    arr.push(up);
+                    uploadsByClass.set(classLabel, arr);
+                }
+                for (const cls of classes) {
+                    const classLabel = cls.classLabel;
+                    const classUploads = uploadsByClass.get(classLabel) ?? [];
+                    if (classUploads.length === 0) continue;
+                    const studentsInClass = await prisma.student.findMany({ where: { classId: cls.id } });
+                    const normalizeName = (value: string) => String(value ?? '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+                    const studentsByNormalized = new Map<string, any[]>();
+                    for (const s of studentsInClass) {
+                        const key = normalizeName(s.name ?? `${s.firstName ?? ''} ${s.lastName ?? ''}`);
+                        const arr = studentsByNormalized.get(key) ?? [];
+                        arr.push(s);
+                        studentsByNormalized.set(key, arr);
+                    }
+                    const studentAgg = new Map<string, { totalPercent: number; count: number }>();
+                    for (const up of classUploads) {
+                        const items = Array.isArray(up.items) ? up.items : [];
+                        const totalItems = items.length > 0 ? items.length : 1;
+                        const studentResults = Array.isArray(up.studentResults) ? up.studentResults as Array<Record<string, unknown>> : [];
+                        for (const r of studentResults) {
+                            const uploadedName = String(r.studentName ?? '').trim();
+                            const norm = normalizeName(uploadedName);
+                            const matched = studentsByNormalized.get(norm) ?? [];
+                            const student = matched[0];
+                            const percent = (typeof r.totalScore === 'number' ? (Number(r.totalScore) / totalItems) * 100 : 0);
+                            if (student && student.id) {
+                                const id = String(student.id);
+                                const existing = studentAgg.get(id) ?? { totalPercent: 0, count: 0 };
+                                existing.totalPercent += percent;
+                                existing.count += 1;
+                                studentAgg.set(id, existing);
+                            }
+                        }
+                    }
+                    const studentAverages = Array.from(studentAgg.values()).map((v) => (v.count ? v.totalPercent / v.count : 0));
+                    if (studentAverages.length === 0) continue;
+                    const classAvg = studentAverages.reduce((s, v) => s + v, 0) / studentAverages.length;
+                    const passing = studentAverages.filter((v) => v >= 75).length;
+                    const passRate = (studentAverages.length > 0) ? (passing / studentAverages.length) * 100 : 0;
+                    classPerformanceById.set(cls.id, {
+                        studentCount: studentsInClass.length,
+                        avgScore: classAvg,
+                        passRate
+                    });
+                }
+            } catch (e) {
+                // fail silently
+            }
         }
 
         let classLabelsInQuarter: Set<string> | undefined;
@@ -4069,43 +4140,74 @@ app.get('/api/admin/teacher-performance', async (req: Request, res: Response) =>
             teacherName: classItem.teacherName,
             subject: classItem.subject
         }));
-        const classIds = classes.map((classItem) => classItem.id);
-        const allStudents = await prisma.student.findMany({
-            where: { classId: { in: classIds } },
-            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
-        });
 
-        const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
-        for (const student of allStudents) {
-            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
-            const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
-            entry.studentCount += 1;
-            entry.totalAverage += studentAverage;
-            if (studentAverage >= 75) {
-                entry.passCount += 1;
+        const classLabelToId = new Map<string, string>();
+        for (const classItem of classRecords) {
+            const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
+            classLabelToId.set(classLabel, String(classItem.id));
+        }
+
+        const allUploads = await prisma.teacherItemAnalysis.findMany({
+            orderBy: [{ timestamp: 'desc' }]
+        }) as unknown as Array<Record<string, unknown>>;
+
+        const uploadsByClass = new Map<string, Array<Record<string, unknown>>>();
+        const onTimeEmails = new Set<string>();
+        for (const upload of allUploads) {
+            const classLabel = String(upload.class ?? '').trim();
+            if (classLabel) {
+                const arr = uploadsByClass.get(classLabel) ?? [];
+                arr.push(upload);
+                uploadsByClass.set(classLabel, arr);
             }
-            classPerformanceMap.set(student.classId, entry);
+            const teacherEmail = String(upload.teacherEmail ?? '').trim().toLowerCase();
+            if (teacherEmail) {
+                onTimeEmails.add(teacherEmail);
+            }
         }
 
         const classPerformanceById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const [classId, metric] of classPerformanceMap) {
+        for (const [classLabel, uploads] of uploadsByClass) {
+            const classId = classLabelToId.get(classLabel);
+            if (!classId) continue;
+
+            const studentPercentages = new Map<string, { totalPercent: number; count: number }>();
+
+            for (const upload of uploads) {
+                const items = Array.isArray(upload.items) ? upload.items : [];
+                const totalItems = items.length > 0 ? items.length : 1;
+                const studentResults = Array.isArray(upload.studentResults)
+                    ? upload.studentResults as Array<Record<string, unknown>>
+                    : [];
+
+                for (const result of studentResults) {
+                    const studentName = String(result.studentName ?? '').trim().toLowerCase();
+                    if (!studentName) continue;
+                    const totalScore = typeof result.totalScore === 'number' ? result.totalScore : Number(result.totalScore ?? 0);
+                    const percent = (totalScore / totalItems) * 100;
+
+                    const existing = studentPercentages.get(studentName) ?? { totalPercent: 0, count: 0 };
+                    existing.totalPercent += percent;
+                    existing.count += 1;
+                    studentPercentages.set(studentName, existing);
+                }
+            }
+
+            if (studentPercentages.size === 0) continue;
+
+            const studentAverages = Array.from(studentPercentages.values())
+                .map((v) => (v.count > 0 ? v.totalPercent / v.count : 0));
+
+            const classAvg = studentAverages.reduce((s, v) => s + v, 0) / studentAverages.length;
+            const passing = studentAverages.filter((v) => v >= 75).length;
+            const passRate = (passing / studentAverages.length) * 100;
+
             classPerformanceById.set(classId, {
-                studentCount: metric.studentCount,
-                avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
-                passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
+                studentCount: studentAverages.length,
+                avgScore: classAvg,
+                passRate
             });
         }
-
-        const uploads = await prisma.teacherItemAnalysis.findMany({
-            where: { teacherEmail: { not: '' } },
-            select: { teacherEmail: true }
-        }) as unknown as Array<{ teacherEmail?: string }>;
-
-        const onTimeEmails = new Set(
-            uploads
-                .map((upload) => upload.teacherEmail?.trim().toLowerCase() ?? '')
-                .filter((email) => email.length > 0)
-        );
 
         const response = buildResponse(teacherRecords, classes, classPerformanceById, onTimeEmails);
         return res.json(response);
@@ -4135,24 +4237,29 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
         }
 
-        const classSubjectMap: Record<string, string[]> = {};
+        const gradeSubjectMap: Record<string, string[]> = {};
         for (const classItem of memoryClasses.values()) {
-            const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
-            if (!classSubjectMap[classLabel]) {
-                classSubjectMap[classLabel] = [];
+            const gradeLevel = (classItem.gradeLevel ?? '').trim();
+            if (!gradeLevel) continue;
+            if (!gradeSubjectMap[gradeLevel]) {
+                gradeSubjectMap[gradeLevel] = [];
             }
 
-            if (!classSubjectMap[classLabel].includes(classItem.subject)) {
-                classSubjectMap[classLabel].push(classItem.subject);
+            if (!gradeSubjectMap[gradeLevel].includes(classItem.subject)) {
+                gradeSubjectMap[gradeLevel].push(classItem.subject);
             }
         }
 
-        const classOptions = Object.keys(classSubjectMap)
-            .sort((first, second) => first.localeCompare(second));
-        const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)
+        const gradeOptions = Object.keys(gradeSubjectMap)
+            .sort((first, second) => {
+                const a = Number(first.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+                const b = Number(second.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+                return a - b;
+            });
+        const selectedGrade = selectedClassQuery && gradeOptions.includes(selectedClassQuery)
             ? selectedClassQuery
-            : (classOptions[0] ?? '');
-        const subjectOptions = selectedClass ? (classSubjectMap[selectedClass] ?? []) : [];
+            : (gradeOptions[0] ?? '');
+        const subjectOptions = selectedGrade ? (gradeSubjectMap[selectedGrade] ?? []) : [];
         const selectedSubject = selectedSubjectQuery && subjectOptions.includes(selectedSubjectQuery)
             ? selectedSubjectQuery
             : (subjectOptions[0] ?? '');
@@ -4160,12 +4267,12 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
         const selectedQuarter = '';
 
         const emptyResponse: AdminItemAnalysisResponse = {
-            title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
-            classOptions,
-            classSubjectMap,
+            title: selectedGrade ? `Item Analysis - ${selectedGrade}` : 'Item Analysis',
+            gradeOptions,
+            gradeSubjectMap,
             subjectOptions,
             quarterOptions,
-            selectedClass,
+            selectedGrade,
             selectedSubject,
             selectedQuarter,
             classAverage: '0.0%',
@@ -4193,48 +4300,55 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
         }
 
         const classRecords = await prisma.classSection.findMany();
-        const classSubjectMap: Record<string, string[]> = {};
+        const gradeSubjectMap: Record<string, string[]> = {};
 
         for (const classItem of classRecords) {
-            const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
+            const gradeLevel = (classItem.gradeLevel ?? '').trim();
             const subjectLabel = classItem.subject?.trim() ?? '';
 
-            if (!classLabel || !subjectLabel) {
+            if (!gradeLevel || !subjectLabel) {
                 continue;
             }
 
-            if (!classSubjectMap[classLabel]) {
-                classSubjectMap[classLabel] = [];
+            if (!gradeSubjectMap[gradeLevel]) {
+                gradeSubjectMap[gradeLevel] = [];
             }
 
-            if (!classSubjectMap[classLabel].includes(subjectLabel)) {
-                classSubjectMap[classLabel].push(subjectLabel);
+            if (!gradeSubjectMap[gradeLevel].includes(subjectLabel)) {
+                gradeSubjectMap[gradeLevel].push(subjectLabel);
             }
         }
 
-        const classOptions = Object.keys(classSubjectMap)
-            .sort((first, second) => first.localeCompare(second));
+        const gradeOptions = Object.keys(gradeSubjectMap)
+            .sort((first, second) => {
+                const a = Number(first.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+                const b = Number(second.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+                return a - b;
+            });
 
         const uploads = await prisma.teacherItemAnalysis.findMany({
             orderBy: [{ timestamp: 'desc' }]
         }) as unknown as Array<Record<string, unknown>>;
 
-        const selectedClass = selectedClassQuery && classOptions.includes(selectedClassQuery)
+        const selectedGrade = selectedClassQuery && gradeOptions.includes(selectedClassQuery)
             ? selectedClassQuery
-            : (classOptions[0] ?? '');
+            : (gradeOptions[0] ?? '');
 
-        const uploadsForClass = selectedClass
-            ? uploads.filter((upload) => String(upload.class ?? '').trim() === selectedClass)
+        const uploadsForGrade = selectedGrade
+            ? uploads.filter((upload) => {
+                const uploadClass = String(upload.class ?? '').trim();
+                return extractGradeFromClassLabel(uploadClass) === selectedGrade;
+            })
             : [];
 
-        const subjectOptions = selectedClass ? (classSubjectMap[selectedClass] ?? []) : [];
+        const subjectOptions = selectedGrade ? (gradeSubjectMap[selectedGrade] ?? []) : [];
 
         const selectedSubject = selectedSubjectQuery && subjectOptions.includes(selectedSubjectQuery)
             ? selectedSubjectQuery
             : (subjectOptions[0] ?? '');
 
         const quarterOptions = Array.from(new Set(
-            uploadsForClass
+            uploadsForGrade
                 .filter((upload) => String(upload.subject ?? '').trim() === selectedSubject)
                 .map((upload) => String(upload.quarter ?? '').trim())
                 .filter((quarter) => quarter.length > 0)
@@ -4244,23 +4358,20 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             ? selectedQuarterQuery
             : (quarterOptions[0] ?? '');
 
-        const selectedAnalysis = uploadsForClass.find((upload) => String(upload.subject ?? '').trim() === selectedSubject);
-        const selectedAnalysisForQuarter = uploadsForClass.find((upload) => {
+        const matchingUploads = uploadsForGrade.filter((upload) => {
             const subjectMatches = String(upload.subject ?? '').trim() === selectedSubject;
             const quarterMatches = String(upload.quarter ?? '').trim() === selectedQuarter;
             return subjectMatches && quarterMatches;
         });
 
-        const activeAnalysis = selectedAnalysisForQuarter ?? selectedAnalysis;
-
-        if (!activeAnalysis) {
+        if (matchingUploads.length === 0) {
             const emptyResponse: AdminItemAnalysisResponse = {
-                title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
-                classOptions,
-                classSubjectMap,
+                title: selectedGrade ? `Item Analysis - ${selectedGrade}` : 'Item Analysis',
+                gradeOptions,
+                gradeSubjectMap,
                 subjectOptions,
                 quarterOptions,
-                selectedClass,
+                selectedGrade,
                 selectedSubject,
                 selectedQuarter,
                 classAverage: '0.0%',
@@ -4272,24 +4383,60 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             return res.json(emptyResponse);
         }
 
-        const items = (activeAnalysis.items as Array<{
+        // Merge studentItemResults across all sections of this grade
+        const allStudentItemResults: Array<{
+            itemResults?: Array<{
+                itemNo?: number;
+                interpretation?: string;
+            }>;
+        }> = [];
+
+        let totalStudentsCount = 0;
+        let totalWeightedDifficulty = 0;
+        let totalWeightedDiscrimination = 0;
+
+        for (const upload of matchingUploads) {
+            const results = Array.isArray(upload.studentItemResults)
+                ? (upload.studentItemResults as Array<{
+                    itemResults?: Array<{
+                        itemNo?: number;
+                        interpretation?: string;
+                    }>;
+                }>)
+                : [];
+            allStudentItemResults.push(...results);
+
+            const studentResults = Array.isArray(upload.studentResults)
+                ? (upload.studentResults as Array<Record<string, unknown>>)
+                : [];
+            const studentCount = studentResults.length || (typeof upload.totalStudents === 'number' ? upload.totalStudents : 1);
+            totalStudentsCount += studentCount;
+
+            const summary = (upload.summary ?? {}) as Record<string, unknown>;
+            const avgDiff = Number(summary.avgDifficulty ?? 0);
+            const avgDisc = Number(summary.avgDiscrimination ?? 0);
+            totalWeightedDifficulty += avgDiff * studentCount;
+            totalWeightedDiscrimination += avgDisc * studentCount;
+        }
+
+        // Use items from the upload with the most students
+        const bestUpload = [...matchingUploads].sort((a, b) => {
+            const aResults = Array.isArray(a.studentResults) ? (a.studentResults as Array<Record<string, unknown>>) : [];
+            const bResults = Array.isArray(b.studentResults) ? (b.studentResults as Array<Record<string, unknown>>) : [];
+            const aCount = aResults.length || (typeof a.totalStudents === 'number' ? a.totalStudents : 0);
+            const bCount = bResults.length || (typeof b.totalStudents === 'number' ? b.totalStudents : 0);
+            return bCount - aCount;
+        })[0]!;
+
+        const items = (bestUpload.items as Array<{
             item?: string;
             difficulty?: number;
             discrimination?: number;
             interpretation?: string;
         }>) ?? [];
 
-        const studentItemResults = Array.isArray(activeAnalysis.studentItemResults)
-            ? (activeAnalysis.studentItemResults as Array<{
-                itemResults?: Array<{
-                    itemNo?: number;
-                    interpretation?: string;
-                }>;
-            }>)
-            : [];
-
         const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();
-        studentItemResults.forEach((studentResult) => {
+        allStudentItemResults.forEach((studentResult) => {
             (studentResult.itemResults ?? []).forEach((itemResult) => {
                 const itemNo = Number(itemResult.itemNo);
                 if (!Number.isFinite(itemNo)) {
@@ -4340,21 +4487,21 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
             };
         });
 
-        const classAverageValue = ((activeAnalysis.summary as Record<string, unknown>)?.avgDifficulty ?? 0) as number;
-        const averageIndexValue = ((activeAnalysis.summary as Record<string, unknown>)?.avgDiscrimination ?? 0) as number;
+        const classAverageValue = totalStudentsCount > 0 ? totalWeightedDifficulty / totalStudentsCount : 0;
+        const averageIndexValue = totalStudentsCount > 0 ? totalWeightedDiscrimination / totalStudentsCount : 0;
 
         const response: AdminItemAnalysisResponse = {
-            title: selectedClass ? `Item Analysis - ${selectedClass}` : 'Item Analysis',
-            classOptions,
-            classSubjectMap,
+            title: selectedGrade ? `Item Analysis - ${selectedGrade}` : 'Item Analysis',
+            gradeOptions,
+            gradeSubjectMap,
             subjectOptions,
             quarterOptions,
-            selectedClass,
+            selectedGrade,
             selectedSubject,
             selectedQuarter,
             classAverage: `${(classAverageValue * 100).toFixed(1)}%`,
             averageIndex: `${(averageIndexValue * 100).toFixed(1)}%`,
-            totalStudents: typeof activeAnalysis.totalStudents === 'number' ? activeAnalysis.totalStudents : rows.length,
+            totalStudents: totalStudentsCount,
             rows
         };
 
@@ -4492,31 +4639,66 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
             id: String(classRecord.id ?? `${classRecord.className}-${classRecord.section}`),
             teacherName: classRecord.teacherName
         }));
-        const classIds = classEntries.map((classEntry) => classEntry.id);
 
-        const allStudents = await prisma.student.findMany({
-            where: { classId: { in: classIds } },
-            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
-        });
+        const classLabelToId = new Map<string, string>();
+        for (const classRecord of classRecords) {
+            const classLabel = buildClassLabel(classRecord.gradeLevel, classRecord.section);
+            classLabelToId.set(classLabel, String(classRecord.id));
+        }
 
-        const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
-        for (const student of allStudents) {
-            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
-            const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
-            entry.studentCount += 1;
-            entry.totalAverage += studentAverage;
-            if (studentAverage >= 75) {
-                entry.passCount += 1;
-            }
-            classPerformanceMap.set(student.classId, entry);
+        const allUploads = await prisma.teacherItemAnalysis.findMany({
+            orderBy: [{ timestamp: 'desc' }]
+        }) as unknown as Array<Record<string, unknown>>;
+
+        const uploadsByClass = new Map<string, Array<Record<string, unknown>>>();
+        for (const upload of allUploads) {
+            const classLabel = String(upload.class ?? '').trim();
+            if (!classLabel) continue;
+            const arr = uploadsByClass.get(classLabel) ?? [];
+            arr.push(upload);
+            uploadsByClass.set(classLabel, arr);
         }
 
         const classMetricsById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const [classId, metric] of classPerformanceMap) {
+        for (const [classLabel, uploads] of uploadsByClass) {
+            const classId = classLabelToId.get(classLabel);
+            if (!classId) continue;
+
+            const studentPercentages = new Map<string, { totalPercent: number; count: number }>();
+
+            for (const upload of uploads) {
+                const items = Array.isArray(upload.items) ? upload.items : [];
+                const totalItems = items.length > 0 ? items.length : 1;
+                const studentResults = Array.isArray(upload.studentResults)
+                    ? upload.studentResults as Array<Record<string, unknown>>
+                    : [];
+
+                for (const result of studentResults) {
+                    const studentName = String(result.studentName ?? '').trim().toLowerCase();
+                    if (!studentName) continue;
+                    const totalScore = typeof result.totalScore === 'number' ? result.totalScore : Number(result.totalScore ?? 0);
+                    const percent = (totalScore / totalItems) * 100;
+
+                    const existing = studentPercentages.get(studentName) ?? { totalPercent: 0, count: 0 };
+                    existing.totalPercent += percent;
+                    existing.count += 1;
+                    studentPercentages.set(studentName, existing);
+                }
+            }
+
+            if (studentPercentages.size === 0) continue;
+
+            const studentAverages = Array.from(studentPercentages.values())
+                .map((v) => (v.count > 0 ? v.totalPercent / v.count : 0));
+
+            const classAvg = studentAverages.reduce((s, v) => s + v, 0) / studentAverages.length;
+            const passing = studentAverages.filter((v) => v >= 75).length;
+            const passRate = (passing / studentAverages.length) * 100;
+
             classMetricsById.set(classId, {
-                studentCount: metric.studentCount,
-                avgScore: metric.studentCount ? metric.totalAverage / metric.studentCount : 0,
-                passRate: metric.studentCount ? (metric.passCount / metric.studentCount) * 100 : 0
+                studentCount: studentAverages.length,
+                avgScore: classAvg,
+                passRate
             });
         }
 
@@ -5143,7 +5325,7 @@ app.get('/api/admin/tos', async (req: Request, res: Response) => {
 
         const filter = {
             schoolYear,
-            classValue,
+            classValue: { startsWith: classValue },
             subject
         };
 

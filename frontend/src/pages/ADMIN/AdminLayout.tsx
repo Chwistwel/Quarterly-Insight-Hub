@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LogOutIcon, MenuIcon } from '../../components/icons';
+import { NavLink } from 'react-router-dom';
+import { MenuIcon } from '../../components/icons';
 import Header from '../../components/Header';
 import '../../styles/Header.css';
 
@@ -67,23 +67,7 @@ type AdminLayoutProps = {
 
 function AdminLayout({ title, kicker, actions, children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userProfile');
-    navigate('/');
-  };
-
-  const storedText = localStorage.getItem('userProfile');
-  const profile: { firstName?: string; lastName?: string; role?: string } | null = (() => {
-    if (storedText) {
-      try { return JSON.parse(storedText) as { firstName?: string; lastName?: string; role?: string }; } catch { return null; }
-    }
-    return null;
-  })();
-  const displayName = [profile?.firstName?.trim(), profile?.lastName?.trim()].filter(Boolean).join(' ') || 'User';
+  const displayName = 'Administrator';
 
   const toggleSidebar = () => setSidebarOpen((previous) => !previous);
 
@@ -130,11 +114,6 @@ function AdminLayout({ title, kicker, actions, children }: AdminLayoutProps) {
               <span className="admin-menu-item-label">All Reports</span>
             </NavLink>
           </nav>
-
-          <button type="button" className="admin-logout" onClick={handleLogout}>
-            <LogOutIcon className="layout-logout-icon" />
-            Log Out
-          </button>
         </aside>
 
         <section className="admin-main">

@@ -18,11 +18,11 @@ type AdminItemAnalysisRow = {
 
 type AdminItemAnalysisResponse = {
   title: string;
-  classOptions: string[];
-  classSubjectMap: Record<string, string[]>;
+  gradeOptions: string[];
+  gradeSubjectMap: Record<string, string[]>;
   subjectOptions: string[];
   quarterOptions: string[];
-  selectedClass: string;
+  selectedGrade: string;
   selectedSubject: string;
   selectedQuarter: string;
   classAverage: string;
@@ -100,7 +100,7 @@ function ItemAnalysis() {
   const [data, setData] = useState<AdminItemAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedQuarter, setSelectedQuarter] = useState<string>('');
   const [selectedView, setSelectedView] = useState<'all' | 'excellent' | 'good' | 'needs'>('all');
@@ -114,8 +114,8 @@ function ItemAnalysis() {
         const role = localStorage.getItem('userRole') ?? '';
         const email = localStorage.getItem('userEmail') ?? '';
         const params = new URLSearchParams();
-        if (selectedClass) {
-          params.set('class', selectedClass);
+        if (selectedGrade) {
+          params.set('class', selectedGrade);
         }
         if (selectedSubject) {
           params.set('subject', selectedSubject);
@@ -134,7 +134,7 @@ function ItemAnalysis() {
         });
 
         setData(response);
-        setSelectedClass(response.selectedClass ?? '');
+        setSelectedGrade(response.selectedGrade ?? '');
         setSelectedSubject(response.selectedSubject ?? '');
         setSelectedQuarter(response.selectedQuarter ?? '');
       } catch (loadError) {
@@ -146,17 +146,17 @@ function ItemAnalysis() {
     };
 
     void load();
-  }, [selectedClass, selectedSubject, selectedQuarter]);
+  }, [selectedGrade, selectedSubject, selectedQuarter]);
 
-  const classOptions = data?.classOptions ?? [];
+  const gradeOptions = data?.gradeOptions ?? [];
 
   const availableSubjects = useMemo(() => {
-    if (!selectedClass) {
+    if (!selectedGrade) {
       return [];
     }
 
-    return data?.classSubjectMap?.[selectedClass] ?? [];
-  }, [data?.classSubjectMap, selectedClass]);
+    return data?.gradeSubjectMap?.[selectedGrade] ?? [];
+  }, [data?.gradeSubjectMap, selectedGrade]);
 
   const availableQuarters = data?.quarterOptions ?? [];
 
@@ -223,7 +223,7 @@ function ItemAnalysis() {
       setTosError(null);
       setTosBlueprint(null);
 
-      if (!selectedClass || !selectedSubject || !selectedQuarter) {
+      if (!selectedGrade || !selectedSubject || !selectedQuarter) {
         setTosLoading(false);
         return;
       }
@@ -233,7 +233,7 @@ function ItemAnalysis() {
         const params = new URLSearchParams({
           schoolYear,
           quarter: normalizeQuarterLabel(selectedQuarter),
-          classValue: selectedClass,
+          classValue: selectedGrade,
           subject: selectedSubject
         });
         const role = localStorage.getItem('userRole') ?? '';
@@ -255,7 +255,7 @@ function ItemAnalysis() {
     };
 
     void loadTos();
-  }, [selectedClass, selectedSubject, selectedQuarter]);
+  }, [selectedGrade, selectedSubject, selectedQuarter]);
 
   const tosRows = tosBlueprint?.rows ?? [];
   const rowTotals = useMemo(() => tosRows.map((row: any) => BLOOM_ORDER.reduce((sum, key) => sum + (row.counts?.[key] ?? 0), 0)), [tosRows]);
@@ -318,26 +318,26 @@ function ItemAnalysis() {
       {error ? <p className="admin-subcopy" style={{ color: '#c43d3d' }}>{error}</p> : null}
 
       <section className="admin-filter-row">
-        <select value={selectedClass} onChange={(event) => {
-          setSelectedClass(event.target.value);
+        <select value={selectedGrade} onChange={(event) => {
+          setSelectedGrade(event.target.value);
           setSelectedSubject('');
           setSelectedQuarter('');
         }}>
-          <option value="">All Classes</option>
-          {classOptions.map((classOption) => (
-            <option key={classOption} value={classOption}>{classOption}</option>
+          <option value="">All Grades</option>
+          {gradeOptions.map((gradeOption) => (
+            <option key={gradeOption} value={gradeOption}>{gradeOption}</option>
           ))}
         </select>
         <select value={selectedSubject} onChange={(event) => {
           setSelectedSubject(event.target.value);
           setSelectedQuarter('');
-        }} disabled={!selectedClass}>
+        }} disabled={!selectedGrade}>
           <option value="">All Subjects</option>
           {availableSubjects.map((subjectOption) => (
             <option key={subjectOption} value={subjectOption}>{subjectOption}</option>
           ))}
         </select>
-        <select value={selectedQuarter} onChange={(event) => setSelectedQuarter(event.target.value)} disabled={!selectedClass || !selectedSubject || availableQuarters.length === 0}>
+        <select value={selectedQuarter} onChange={(event) => setSelectedQuarter(event.target.value)} disabled={!selectedGrade || !selectedSubject || availableQuarters.length === 0}>
           <option value="">All Quarters</option>
           {availableQuarters.map((quarterOption) => (
             <option key={quarterOption} value={quarterOption}>{quarterOption}</option>
@@ -371,7 +371,7 @@ function ItemAnalysis() {
       <section className="teacher-panel teacher-item-analysis-linked-panel">
         <div className="teacher-panel-head teacher-dash-heading-divider">
           <h2>Analysis Summary & TOS Summary</h2>
-          <span>{selectedSubject || 'Select Subject'} | {selectedClass || 'Select Class'} | {selectedQuarter || 'Select Quarter'}</span>
+          <span>{selectedSubject || 'Select Subject'} | {selectedGrade || 'Select Grade'} | {selectedQuarter || 'Select Quarter'}</span>
         </div>
 
         {/* Summary moved below the Item Analysis table */}
@@ -517,7 +517,7 @@ function ItemAnalysis() {
       <section className="teacher-panel teacher-item-analysis-linked-panel" style={{ marginTop: '1.5rem' }}>
         <div className="teacher-panel-head teacher-dash-heading-divider">
           <h2>Analysis Summary & Interventions</h2>
-          <span>{selectedSubject || 'Select Subject'} | {selectedClass || 'Select Class'} | {selectedQuarter || 'Select Quarter'}</span>
+          <span>{selectedSubject || 'Select Subject'} | {selectedGrade || 'Select Grade'} | {selectedQuarter || 'Select Quarter'}</span>
         </div>
 
         <div className="teacher-item-analysis-summary-box">

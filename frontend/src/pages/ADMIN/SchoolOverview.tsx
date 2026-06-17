@@ -18,7 +18,7 @@ type SchoolOverviewResponse = {
 		averageScore: number;
 		students: number;
 		passRate: number;
-		status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement';
+		status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement' | 'No Data';
 	}>;
 };
 
@@ -34,7 +34,7 @@ function SchoolOverview() {
 		...(data?.gradeOptions ?? [])
 	]), [data?.gradeOptions]);
 
-	const quarterOptions = ['All Quarters', 'Q1', 'Q2', 'Q3', 'Q4'];
+	const quarterOptions = ['All Quarters', 'First', 'Second', 'Third', 'Fourth'];
 
 	const parseGradeOrder = (label: string): number => {
 		const match = label.match(/\d+/);
@@ -104,7 +104,7 @@ function SchoolOverview() {
 		void load();
 	}, [selectedGradeLevel, selectedQuarter]);
 
-	const getStatusBadgeClass = (status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement'): string => {
+	const getStatusBadgeClass = (status: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement' | 'No Data'): string => {
 		if (status === 'Excellent') {
 			return 'excellent';
 		}
@@ -115,6 +115,10 @@ function SchoolOverview() {
 
 		if (status === 'Fair') {
 			return 'fair';
+		}
+
+		if (status === 'No Data') {
+			return 'no-data';
 		}
 
 		return 'poor';

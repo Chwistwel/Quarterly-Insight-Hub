@@ -758,8 +758,8 @@ function ItemAnalysis() {
 		setSavingLinkedAnalysis(true);
 
 		const preparedEntries = (analysisEntries ?? []).map((entry) => {
-			const contentArea = entry.contentArea && entry.contentArea !== '' ? entry.contentArea : (itemToCompetency.get(entry.itemNumber) ?? '-');
-			const intervention = contentArea && contentArea !== '-' ? `Remediation on ${contentArea}` : 'Remediation';
+			const contentArea = entry.contentArea && entry.contentArea !== '' ? entry.contentArea : (itemToCompetency.get(entry.itemNumber) ?? 'Not specified');
+			const intervention = contentArea && contentArea !== 'Not specified' ? `Remediation on ${contentArea}` : 'General remediation';
 			return {
 				...entry,
 				contentArea,
@@ -1293,7 +1293,7 @@ function ItemAnalysis() {
 								{mostLearnedItems.map((item) => {
 									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
 									const autoContent = itemToCompetency.get(Number(item.itemNo));
-									const displayContent = autoContent ?? entry.contentArea ?? '-';
+									const displayContent = autoContent ?? entry.contentArea ?? 'Not specified';
 									return (
 										<tr key={`most-learned-${item.itemNo}`}>
 											<td>{item.itemNo}</td>
@@ -1324,7 +1324,7 @@ function ItemAnalysis() {
 								{leastLearnedItems.map((item) => {
 									const entry = analysisEntries.find(e => e.itemNumber === item.itemNo) || createAnalysisEntry(item.itemNo);
 									const autoContent = itemToCompetency.get(Number(item.itemNo));
-									const displayContent = autoContent ?? entry.contentArea ?? '-';
+									const displayContent = autoContent ?? entry.contentArea ?? 'Not specified';
 									return (
 										<tr key={`least-learned-${item.itemNo}`}>
 											<td>{item.itemNo}</td>
@@ -1333,7 +1333,7 @@ function ItemAnalysis() {
 											</td>
 											<td>
 												<div style={{ padding: '0.25rem 0.5rem', color: 'var(--text-main)' }}>
-													{(displayContent && displayContent !== '-') ? `Remediation on ${displayContent}` : 'Remediation'}
+													{displayContent !== 'Not specified' ? `Remediation on ${displayContent}` : 'General remediation'}
 												</div>
 											</td>
 										</tr>

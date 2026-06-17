@@ -777,12 +777,6 @@ function TOSBuilder() {
 				{statusMessage ? <p className="teacher-status">{statusMessage}</p> : null}
 				<section className="teacher-dash-heading teacher-page-heading">
 					<p>TABLE OF SPECIFICATIONS AUTOMATION WORKSPACE</p>
-					<div className="teacher-heading-row teacher-tos-heading-row">
-					<button type="button" className="teacher-pill-btn" onClick={handleLandingCreate}>
-						<PlusIcon className="teacher-btn-icon" />
-						Create
-					</button>
-				</div>
 			</section>
 
 			<div className="teacher-content-toggle-bar teacher-tos-toggle-bar" role="tablist" aria-label="Analysis tools">
@@ -839,6 +833,10 @@ function TOSBuilder() {
 							<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
 						))}
 					</select>
+					<button type="button" className="teacher-pill-btn" onClick={handleLandingCreate} style={{ marginLeft: 'auto' }}>
+						<PlusIcon className="teacher-btn-icon" />
+						Create
+					</button>
 				</section>
 
 				<section className="teacher-panel teacher-tos-landing-panel">

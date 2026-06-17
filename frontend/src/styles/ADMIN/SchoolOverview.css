@@ -615,6 +615,11 @@
   color: #c43d3d;
 }
 
+.admin-badge.no-data {
+  background: #f0f0f0;
+  color: #888;
+}
+
 .admin-rate-bar {
   width: 90px;
   height: 6px;
