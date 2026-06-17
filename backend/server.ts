@@ -1251,21 +1251,31 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Email and password are required.' });
     }
 
-    const normalizedEmail = normalizeEmail(email);
+    const rawEmail = email.trim();
+    const emailVariants = [normalizeEmail(rawEmail)];
+    if (rawEmail.includes('@')) {
+        const localPart = rawEmail.split('@')[0];
+        if (localPart) emailVariants.push(normalizeEmail(localPart));
+    } else {
+        emailVariants.push(normalizeEmail(`${rawEmail}@kalalake.edu.ph`));
+    }
 
     if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const matchingFallbackUsers = findMemoryUsersByEmail(normalizedEmail)
-            .filter(({ user }) => verifyPassword(password, user.passwordHash));
-
-        if (matchingFallbackUsers.length === 0) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
+        let authenticatedUser: { role: UserRole; user: PersistedUser } | null = null;
+        for (const variant of emailVariants) {
+            const users = findMemoryUsersByEmail(variant);
+            const matched = users.filter(({ user }) =>
+                typeof user.passwordHash === 'string' && verifyPassword(password, user.passwordHash)
+            );
+            if (matched.length === 1) {
+                const match = matched[0]!;
+                authenticatedUser = { role: match.role, user: match.user as unknown as PersistedUser };
+                break;
+            }
+            if (matched.length > 1) {
+                return res.status(409).json({ message: 'This email is assigned to multiple roles. Contact support to resolve the duplicate account.' });
+            }
         }
-
-        if (matchingFallbackUsers.length > 1) {
-            return res.status(409).json({ message: 'This email is assigned to multiple roles. Contact support to resolve the duplicate account.' });
-        }
-
-        const authenticatedUser = matchingFallbackUsers[0];
 
         if (!authenticatedUser) {
             return res.status(401).json({ message: 'Invalid credentials.' });
@@ -1284,8 +1294,17 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 
     try {
-        const matchingUsers = (await findDatabaseUsersByEmail(normalizedEmail))
-            .filter(({ user }) => typeof user.passwordHash === 'string' && verifyPassword(password, user.passwordHash));
+        const matchingUsers: { role: UserRole; user: PersistedUser }[] = [];
+        for (const variant of emailVariants) {
+            const found = await findDatabaseUsersByEmail(variant);
+            for (const fu of found) {
+                if (typeof fu.user.passwordHash === 'string' && verifyPassword(password, fu.user.passwordHash)) {
+                    if (!matchingUsers.some((m) => m.role === fu.role && m.user.id === fu.user.id)) {
+                        matchingUsers.push(fu);
+                    }
+                }
+            }
+        }
 
         if (matchingUsers.length === 0) {
             return res.status(401).json({ message: 'Invalid credentials.' });
