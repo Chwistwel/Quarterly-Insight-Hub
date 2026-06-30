@@ -46,18 +46,6 @@ type RequestWithFile = Request & {
     };
 };
 
-type MemoryUser = {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    passwordHash: string;
-    subject?: string;
-    className?: string;
-    averageScore?: number;
-    passRate?: number;
-};
-
 type PersistedUser = {
     _id?: unknown;
     id?: string;
@@ -65,18 +53,6 @@ type PersistedUser = {
     lastName: string;
     email: string;
     passwordHash?: string;
-    subject?: string;
-    className?: string;
-    averageScore?: number;
-    passRate?: number;
-};
-
-type CredentialUserRecord = {
-    _id?: unknown;
-    firstName: string;
-    lastName: string;
-    email: string;
-    passwordHash: string;
     subject?: string;
     className?: string;
     averageScore?: number;
@@ -92,16 +68,6 @@ type TeacherListItem = {
     className: string;
     averageScore: number;
     passRate: number;
-};
-
-type MemoryClass = {
-    id: string;
-    className: string;
-    gradeLevel: string;
-    section: string;
-    subject: string;
-    teacherName: string;
-    studentCount: number;
 };
 
 type ClassRecord = {
@@ -123,24 +89,6 @@ type ClassListItem = {
     subject: string;
     teacherName: string;
     studentCount: number;
-};
-
-type MemoryStudent = {
-    id: string;
-    classId: string;
-    teacherEmail: string;
-    name: string;
-    firstName: string;
-    middleInitial: string;
-    lastName: string;
-    gender: string;
-    grade: string;
-    section: string;
-    subject: string;
-    q1Score: number;
-    q2Score: number;
-    q3Score: number;
-    q4Score: number;
 };
 
 type StudentRecord = {
@@ -321,20 +269,6 @@ type TosBlueprintRecord = {
     latestHistoryVersion?: number;
 };
 
-type TosBlueprintHistoryRecord = TosBlueprintRecord & {
-    version: number;
-    savedAt: string;
-};
-
-type TosBlueprintResponse = TosBlueprintRecord & {
-    version: number;
-    historyCount: number;
-};
-
-type TosBlueprintHistoryResponse = {
-    history: TosBlueprintHistoryRecord[];
-};
-
 type TosBlueprintOptionsResponse = {
     combinations: Array<{
         schoolYear: string;
@@ -351,15 +285,6 @@ type UserLookupResult<TUser extends PersistedUser = PersistedUser> = {
     role: UserRole;
     user: TUser;
 };
-
-const USE_IN_MEMORY_AUTH_FALLBACK = (process.env.USE_IN_MEMORY_AUTH_FALLBACK ?? 'true').toLowerCase() !== 'false';
-const USER_ROLES: UserRole[] = ['teacher', 'administrator'];
-const memoryUsersByRole: Record<UserRole, Map<string, MemoryUser>> = {
-    teacher: new Map<string, MemoryUser>(),
-    administrator: new Map<string, MemoryUser>()
-};
-const memoryClasses = new Map<string, MemoryClass>();
-const memoryStudents = new Map<string, MemoryStudent>();
 
 function isSupportedRole(role: unknown): role is UserRole {
     return role === 'teacher' || role === 'administrator';
@@ -412,12 +337,6 @@ function normalizeTosRows(rows: unknown): TosRowRecord[] {
     });
 }
 
-function buildTosRecordId(teacherEmail: string, schoolYear: string, classValue: string, subject: string, quarter: string): string {
-    return [teacherEmail, schoolYear, classValue, subject, quarter]
-        .map((value) => value.trim().toLowerCase())
-        .join('::');
-}
-
 function normalizeTosRecord(body: unknown, requesterEmail: string): TosBlueprintRecord {
     const payload = (body ?? {}) as Partial<TosBlueprintRecord>;
 
@@ -468,17 +387,6 @@ async function syncClassStudentCountInDatabase(classId: string): Promise<void> {
     await prisma.classSection.updateMany({
         where: { id: classId },
         data: { studentCount }
-    });
-}
-
-function getMemoryStoreByRole(role: UserRole): Map<string, MemoryUser> {
-    return memoryUsersByRole[role];
-}
-
-function findMemoryUsersByEmail(normalizedEmail: string): UserLookupResult<MemoryUser>[] {
-    return USER_ROLES.flatMap((role) => {
-        const user = getMemoryStoreByRole(role).get(normalizedEmail);
-        return user ? [{ role, user }] : [];
     });
 }
 
@@ -590,35 +498,6 @@ function parseTeacherDisplayName(teacherName: string): { firstName: string; last
 
 function getTeacherDisplayNameFromUser(user: { firstName?: string; lastName?: string }): string {
     return `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
-}
-
-function getLatestMemoryClassForTeacher(teacherName: string): MemoryClass | undefined {
-    const normalizedTeacherName = teacherName.trim().toLowerCase();
-    const matchingClasses = Array.from(memoryClasses.values())
-        .filter((classItem) => classItem.teacherName.trim().toLowerCase() === normalizedTeacherName);
-
-    return matchingClasses[matchingClasses.length - 1];
-}
-
-function syncMemoryTeacherAssignmentByName(teacherName: string): void {
-    const normalizedTeacherName = teacherName.trim().toLowerCase();
-    const assignedTeacher = Array.from(getMemoryStoreByRole('teacher').values())
-        .find((teacher) => getTeacherDisplayNameFromUser(teacher).toLowerCase() === normalizedTeacherName);
-
-    if (!assignedTeacher) {
-        return;
-    }
-
-    const latestClass = getLatestMemoryClassForTeacher(teacherName);
-
-    if (!latestClass) {
-        assignedTeacher.className = '';
-        assignedTeacher.subject = '';
-        return;
-    }
-
-    assignedTeacher.className = buildClassLabel(latestClass.gradeLevel, latestClass.section);
-    assignedTeacher.subject = latestClass.subject;
 }
 
 async function syncDatabaseTeacherAssignmentByName(teacherName: string): Promise<void> {
@@ -1028,106 +907,7 @@ app.get('/', (req: Request, res: Response) => {
     res.send('API is running...');
 });
 
-// Example API Route
-app.get('/api/example', (req: Request, res: Response) => {
-    res.json({ message: 'Hello from TypeScript Server!' });
-});
-
-app.get('/api/analytics', (_req: Request, res: Response) => {
-    res.json({
-        title: 'Advanced Analytics',
-        description: 'Connect your data sources to start generating analytics insights.'
-    });
-});
-
-app.get('/api/dashboard', (_req: Request, res: Response) => {
-    res.json({
-        metrics: {
-            totalStudents: 0,
-            averageScore: 0,
-            subjectsAssessed: 0,
-            highPerformers: 0,
-            trends: {
-                students: 'No trend data available',
-                score: 'No trend data available',
-                subjects: 'No trend data available',
-                performers: 'No trend data available'
-            }
-        },
-        gradeDistribution: { a: 0, b: 0, c: 0, d: 0, f: 0 },
-        subjectPerformance: [],
-        activities: []
-    });
-});
-
-app.get('/api/performance-metrics', (_req: Request, res: Response) => {
-    res.json({
-        kpiMetrics: {
-            overallAverage: 0,
-            passingRate: 0,
-            atRiskStudents: 0,
-            trends: {
-                average: 'No trend data available',
-                passing: 'No trend data available',
-                atRisk: 'No trend data available'
-            }
-        },
-        subjectData: [],
-        topPerformers: [],
-        supportStudents: [],
-        insights: []
-    });
-});
-
-app.get('/api/quarterly-reports', (_req: Request, res: Response) => {
-    res.json({
-        templates: [],
-        generatedReports: [],
-        components: [],
-        statistics: {
-            totalReports: 0,
-            downloads: 0,
-            automatedSchedules: 0,
-            accuracy: 0
-        }
-    });
-});
-
-app.get('/api/student-records', (req: Request, res: Response) => {
-    const rawPage = Number(req.query.page);
-    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
-
-    res.json({
-        students: [],
-        kpiCounts: {
-            total: 0,
-            excellent: 0,
-            good: 0,
-            satisfactory: 0,
-            needsSupport: 0
-        },
-        currentPage: page,
-        totalPages: 1
-    });
-});
-
-app.post('/api/auth/signup', async (req: Request, res: Response) => {
-    const { firstName, lastName, email, password, confirmPassword, role } = req.body as {
-        firstName?: string;
-        lastName?: string;
-        email?: string;
-        password?: string;
-        confirmPassword?: string;
-        role?: string;
-    };
-
-    void firstName;
-    void lastName;
-    void email;
-    void password;
-    void confirmPassword;
-    void role;
-
+app.post('/api/auth/signup', async (_req: Request, res: Response) => {
     return res.status(403).json({
         message: 'Self-signup is disabled. Ask an administrator to create your teacher account.'
     });
@@ -1166,40 +946,6 @@ app.post('/api/admin/teachers', async (req: Request, res: Response) => {
     const normalizedTeacherEmail = normalizeEmail(email);
     const normalizedSubject = subject?.trim() || undefined;
     const normalizedClassName = className?.trim() || undefined;
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const existingFallbackUsers = findMemoryUsersByEmail(normalizedTeacherEmail);
-
-        if (existingFallbackUsers.length > 0) {
-            return res.status(409).json({ message: 'An account with this email/username already exists.' });
-        }
-
-        const fallbackTeacher: MemoryUser = {
-            id: randomBytes(12).toString('hex'),
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            email: normalizedTeacherEmail,
-            passwordHash: hashPassword(password),
-            averageScore: 0,
-            passRate: 0,
-            ...(normalizedSubject ? { subject: normalizedSubject } : {}),
-            ...(normalizedClassName ? { className: normalizedClassName } : {})
-        };
-
-        getMemoryStoreByRole('teacher').set(normalizedTeacherEmail, fallbackTeacher);
-
-        return res.status(201).json({
-            message: 'Teacher account created successfully (temporary in-memory mode).',
-            user: buildAuthUser('teacher', fallbackTeacher),
-            teacher: buildTeacherListItem(fallbackTeacher)
-        });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -1263,33 +1009,6 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         if (localPart) emailVariants.push(normalizeEmail(localPart));
     } else {
         emailVariants.push(normalizeEmail(`${rawEmail}@kalalake.edu.ph`));
-    }
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        let authenticatedUser: { role: UserRole; user: PersistedUser } | null = null;
-        for (const variant of emailVariants) {
-            const users = findMemoryUsersByEmail(variant);
-            const matched = users.filter(({ user }) =>
-                typeof user.passwordHash === 'string' && verifyPassword(password, user.passwordHash)
-            );
-            if (matched.length === 1) {
-                const match = matched[0]!;
-                authenticatedUser = { role: match.role, user: match.user as unknown as PersistedUser };
-                break;
-            }
-            if (matched.length > 1) {
-                return res.status(409).json({ message: 'This email is assigned to multiple roles. Contact support to resolve the duplicate account.' });
-            }
-        }
-
-        if (!authenticatedUser) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
-        }
-
-        return res.json({
-            message: 'Login successful (temporary in-memory mode).',
-            user: buildAuthUser(authenticatedUser.role, authenticatedUser.user)
-        });
     }
 
     if (!isDatabaseReady()) {
@@ -1381,27 +1100,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
 
         // Build teacher classes and uploads so dashboard is based on real data.
 
-        if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-            const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-            if (!fallbackTeacher) {
-                return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-            }
-
-            const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
-            const classes = Array.from(memoryClasses.values())
-                .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase());
-
-            assignedClasses = classes.map((classItem) => {
-                const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
-                const studentCount = Array.from(memoryStudents.values()).filter((student) => student.classId === classItem.id).length;
-                return {
-                    id: classItem.id,
-                    classLabel,
-                    studentCount
-                };
-            });
-        } else if (isDatabaseReady()) {
+        {
             
             
             
@@ -1425,7 +1124,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 };
             }));
 
-            if (isDatabaseReady()) {
+            {
                 uploads = await prisma.teacherItemAnalysis.findMany({
                     where: { teacherEmail: normalizedTeacherEmail },
                     orderBy: [{ timestamp: 'desc' }]
@@ -1447,10 +1146,6 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                     filterQuarterOptions = quartersFromUploads;
                 }
             }
-        } else {
-            return res.status(503).json({
-                message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
-            });
         }
 
         const grades = Array.from(new Set(assignedClasses.map((classItem) => classItem.classLabel)));
@@ -1869,36 +1564,7 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
         let subjects: string[] = [];
         let classSubjectMap: Record<string, string[]> = {};
 
-        if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-            const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-            if (!fallbackTeacher) {
-                return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-            }
-
-            const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
-            const classes = Array.from(memoryClasses.values())
-                .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase());
-
-            const gradeSet = new Set<string>();
-            const subjectSet = new Set<string>();
-
-            for (const classItem of classes) {
-                const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
-                gradeSet.add(classLabel);
-                subjectSet.add(classItem.subject);
-
-                if (!classSubjectMap[classLabel]) {
-                    classSubjectMap[classLabel] = [];
-                }
-                if (!classSubjectMap[classLabel].includes(classItem.subject)) {
-                    classSubjectMap[classLabel].push(classItem.subject);
-                }
-            }
-
-            gradeLevels = Array.from(gradeSet);
-            subjects = Array.from(subjectSet);
-        } else if (isDatabaseReady()) {
+        {
             
             
             const teacherAccount = await prisma.teacher.findFirst({ where: { email: normalizedTeacherEmail } });
@@ -1932,10 +1598,6 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
 
             gradeLevels = Array.from(gradeSet);
             subjects = Array.from(subjectSet);
-        } else {
-            return res.status(503).json({
-                message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
-            });
         }
 
         return res.json({
@@ -2268,43 +1930,6 @@ app.get('/teacher/my-classes', async (req: Request, res: Response) => {
 
     const normalizedTeacherEmail = normalizeEmail(requesterEmail);
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-        if (!fallbackTeacher) {
-            return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-        }
-
-        const teacherDisplayName = getTeacherDisplayNameFromUser(fallbackTeacher);
-        const classRecords = Array.from(memoryClasses.values())
-            .filter((classItem) => classItem.teacherName.trim().toLowerCase() === teacherDisplayName.toLowerCase())
-            .map((classItem) => ({
-                id: classItem.id,
-                grade: classItem.gradeLevel,
-                section: classItem.section,
-                subject: classItem.subject,
-                studentCount: 0,
-                teacher: classItem.teacherName,
-                gradeTag: classItem.gradeLevel
-            }));
-
-        const studentCountsByClass = new Map<string, number>();
-        for (const student of memoryStudents.values()) {
-            if (student.teacherEmail !== normalizedTeacherEmail) {
-                continue;
-            }
-
-            studentCountsByClass.set(student.classId, (studentCountsByClass.get(student.classId) ?? 0) + 1);
-        }
-
-        const classes = classRecords.map((classItem) => ({
-            ...classItem,
-            studentCount: studentCountsByClass.get(classItem.id) ?? 0
-        }));
-
-        return res.json({ classes });
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -2612,51 +2237,6 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
         return `${average.toFixed(1)}%`;
     };
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-        if (!fallbackTeacher) {
-            return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-        }
-
-        const students = Array.from(memoryStudents.values())
-            .filter((student) => student.teacherEmail === normalizedTeacherEmail)
-            .filter((student) => !classId || student.classId === classId)
-            .sort((first, second) => first.name.localeCompare(second.name))
-            .map((student) => ({
-                ...parseNameParts(student.name),
-                id: student.id,
-                name: student.name,
-                gender: student.gender ?? '',
-                grade: student.grade,
-                section: student.section,
-                q1Score: student.q1Score,
-                q2Score: student.q2Score,
-                q3Score: student.q3Score,
-                q4Score: student.q4Score,
-                average: formatAverage(student),
-                classId: student.classId,
-                subject: student.subject,
-                ranking: 0
-            }));
-
-        const rankingLookup = await buildRankingLookup(students);
-        const studentsWithRanking = students.map((student) => ({
-            ...student,
-            ranking: rankingLookup.get(student.id) ?? 0
-        }));
-
-        const classItem = classId ? memoryClasses.get(classId) : undefined;
-        const classLabel = classItem ? `${classItem.gradeLevel} - ${classItem.section} (${classItem.subject})` : 'All Classes';
-
-        return res.json({
-            title: 'Student Management',
-            systemLabel: 'MANAGE YOUR STUDENTS',
-            classLabel,
-            students: studentsWithRanking
-        });
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -2784,42 +2364,6 @@ app.post('/teacher/students', async (req: Request, res: Response) => {
     const normalizedName = structuredName || (name?.trim() ?? '');
     const nameParts = parseNameParts(normalizedName);
     const normalizedGender = gender?.trim() ?? '';
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-        if (!fallbackTeacher) {
-            return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-        }
-
-        const classItem = memoryClasses.get(classId);
-        if (!classItem) {
-            return res.status(404).json({ message: 'Class not found.' });
-        }
-
-        const studentId = randomBytes(12).toString('hex');
-        const newStudent: MemoryStudent = {
-            id: studentId,
-            classId,
-            teacherEmail: normalizedTeacherEmail,
-            name: normalizedName,
-            firstName: nameParts.firstName,
-            middleInitial: nameParts.middleInitial,
-            lastName: nameParts.lastName,
-            gender: normalizedGender,
-            grade: classItem.gradeLevel,
-            section: classItem.section,
-            subject: classItem.subject,
-            q1Score: 0,
-            q2Score: 0,
-            q3Score: 0,
-            q4Score: 0
-        };
-
-        memoryStudents.set(studentId, newStudent);
-
-        return res.status(201).json({ message: 'Student added successfully.', student: newStudent });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -3227,31 +2771,6 @@ app.put('/teacher/students/:studentId', async (req: Request, res: Response) => {
     const normalizedQ2 = parseScore(q2Score);
     const normalizedQ3 = parseScore(q3Score);
     const normalizedQ4 = parseScore(q4Score);
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackTeacher = getMemoryStoreByRole('teacher').get(normalizedTeacherEmail);
-
-        if (!fallbackTeacher) {
-            return res.status(403).json({ message: 'Teacher session is not recognized. Please sign in again.' });
-        }
-
-        const existingStudent = memoryStudents.get(studentId);
-        if (!existingStudent || existingStudent.teacherEmail !== normalizedTeacherEmail) {
-            return res.status(404).json({ message: 'Student not found.' });
-        }
-
-        existingStudent.firstName = firstName.trim();
-        existingStudent.middleInitial = normalizedMiddleInitial;
-        existingStudent.lastName = lastName.trim();
-        existingStudent.gender = normalizedGender;
-        existingStudent.name = normalizedName;
-        existingStudent.q1Score = normalizedQ1;
-        existingStudent.q2Score = normalizedQ2;
-        existingStudent.q3Score = normalizedQ3;
-        existingStudent.q4Score = normalizedQ4;
-
-        return res.json({ message: 'Student updated successfully.' });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -3715,48 +3234,6 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
         };
     };
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const teachers = Array.from(getMemoryStoreByRole('teacher').values());
-        const classes = Array.from(memoryClasses.values()).map((classItem) => ({
-            id: classItem.id,
-            classLabel: buildClassLabel(classItem.gradeLevel, classItem.section),
-            gradeLevel: classItem.gradeLevel,
-            section: classItem.section,
-            subject: classItem.subject,
-            teacherName: classItem.teacherName
-        }));
-
-        const classPerformanceById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const classItem of classes) {
-            const studentsInClass = Array.from(memoryStudents.values()).filter((student) => student.classId === classItem.id);
-            const studentCount = studentsInClass.length;
-            const totalAverage = studentsInClass.reduce((sum, student) => {
-                const average = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-                return sum + average;
-            }, 0);
-            const passCount = studentsInClass.filter((student) => {
-                const average = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-                return average >= 75;
-            }).length;
-
-            classPerformanceById.set(classItem.id, {
-                studentCount,
-                avgScore: studentCount ? totalAverage / studentCount : 0,
-                passRate: studentCount ? (passCount / studentCount) * 100 : 0
-            });
-        }
-
-        const classLabelsInQuarter: Set<string> | undefined = undefined;
-
-        return res.json(buildResponse(teachers, classes, classPerformanceById, classLabelsInQuarter));
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -4079,43 +3556,6 @@ app.get('/api/admin/teacher-performance', async (req: Request, res: Response) =>
         };
     };
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const teachers = Array.from(getMemoryStoreByRole('teacher').values());
-        const classes = Array.from(memoryClasses.values()).map((classItem) => ({
-            id: classItem.id,
-            teacherName: classItem.teacherName,
-            subject: classItem.subject
-        }));
-        const classPerformanceById = new Map<string, { studentCount: number; avgScore: number; passRate: number }>();
-        for (const classItem of classes) {
-            const studentsInClass = Array.from(memoryStudents.values()).filter((student) => student.classId === classItem.id);
-            const studentCount = studentsInClass.length;
-            const totalAverage = studentsInClass.reduce((sum, student) => {
-                const average = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-                return sum + average;
-            }, 0);
-            const passCount = studentsInClass.filter((student) => {
-                const average = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-                return average >= 75;
-            }).length;
-
-            classPerformanceById.set(classItem.id, {
-                studentCount,
-                avgScore: studentCount ? totalAverage / studentCount : 0,
-                passRate: studentCount ? (passCount / studentCount) * 100 : 0
-            });
-        }
-
-        const response = buildResponse(teachers, classes, classPerformanceById, new Set<string>());
-        return res.json(response);
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -4229,60 +3669,6 @@ app.get('/api/admin/item-analysis', async (req: Request, res: Response) => {
     }
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const gradeSubjectMap: Record<string, string[]> = {};
-        for (const classItem of memoryClasses.values()) {
-            const gradeLevel = (classItem.gradeLevel ?? '').trim();
-            if (!gradeLevel) continue;
-            if (!gradeSubjectMap[gradeLevel]) {
-                gradeSubjectMap[gradeLevel] = [];
-            }
-
-            if (!gradeSubjectMap[gradeLevel].includes(classItem.subject)) {
-                gradeSubjectMap[gradeLevel].push(classItem.subject);
-            }
-        }
-
-        const gradeOptions = Object.keys(gradeSubjectMap)
-            .sort((first, second) => {
-                const a = Number(first.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
-                const b = Number(second.match(/(\d+)/)?.[1] ?? Number.MAX_SAFE_INTEGER);
-                return a - b;
-            });
-        const selectedGrade = selectedClassQuery && gradeOptions.includes(selectedClassQuery)
-            ? selectedClassQuery
-            : (gradeOptions[0] ?? '');
-        const subjectOptions = selectedGrade ? (gradeSubjectMap[selectedGrade] ?? []) : [];
-        const selectedSubject = selectedSubjectQuery && subjectOptions.includes(selectedSubjectQuery)
-            ? selectedSubjectQuery
-            : (subjectOptions[0] ?? '');
-        const quarterOptions: string[] = [];
-        const selectedQuarter = '';
-
-        const emptyResponse: AdminItemAnalysisResponse = {
-            title: selectedGrade ? `Item Analysis - ${selectedGrade}` : 'Item Analysis',
-            gradeOptions,
-            gradeSubjectMap,
-            subjectOptions,
-            quarterOptions,
-            selectedGrade,
-            selectedSubject,
-            selectedQuarter,
-            classAverage: '0.0%',
-            averageIndex: '0.0%',
-            totalStudents: 0,
-            rows: []
-        };
-
-        return res.json(emptyResponse);
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -4522,30 +3908,6 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
 
-    const calculateMemoryClassMetrics = (classId: string): { studentCount: number; avgScore: number; passRate: number } => {
-        const students = Array.from(memoryStudents.values()).filter((student) => student.classId === classId);
-        const studentCount = students.length;
-
-        if (!studentCount) {
-            return { studentCount: 0, avgScore: 0, passRate: 0 };
-        }
-
-        const totalAverage = students.reduce((sum, student) => {
-            const studentAverage = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-            return sum + studentAverage;
-        }, 0);
-        const passCount = students.filter((student) => {
-            const studentAverage = (student.q1Score + student.q2Score + student.q3Score + student.q4Score) / 4;
-            return studentAverage >= 75;
-        }).length;
-
-        return {
-            studentCount,
-            avgScore: totalAverage / studentCount,
-            passRate: (passCount / studentCount) * 100
-        };
-    };
-
     const computeTeacherMetrics = (
         teacherName: string,
         classEntries: Array<{ id: string; teacherName: string }>,
@@ -4575,43 +3937,6 @@ app.get('/api/admin/teachers', async (req: Request, res: Response) => {
             passRate: weightedTotals.passWeighted / weightedTotals.weight
         };
     };
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const classEntries = Array.from(memoryClasses.values()).map((classItem) => ({
-            id: classItem.id,
-            teacherName: classItem.teacherName
-        }));
-        const classMetricsById = new Map(
-            classEntries.map((classEntry) => [classEntry.id, calculateMemoryClassMetrics(classEntry.id)])
-        );
-
-        const teachers = buildTeacherListWithClassAssignments(
-            Array.from(getMemoryStoreByRole('teacher').values()),
-            Array.from(memoryClasses.values())
-        )
-            .map((teacher) => {
-                const metrics = computeTeacherMetrics(
-                    getTeacherDisplayNameFromUser({ firstName: teacher.firstName, lastName: teacher.lastName }),
-                    classEntries,
-                    classMetricsById
-                );
-
-                return {
-                    ...teacher,
-                    averageScore: Number(metrics.averageScore.toFixed(1)),
-                    passRate: Number(metrics.passRate.toFixed(1))
-                };
-            })
-            .sort((first, second) => first.lastName.localeCompare(second.lastName));
-
-        return res.json({ teachers });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -4764,55 +4089,6 @@ app.put('/api/admin/teachers/:teacherId', async (req: Request, res: Response) =>
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
     const normalizedTeacherEmail = normalizeEmail(email);
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const teacherStore = getMemoryStoreByRole('teacher');
-        const existingEntry = Array.from(teacherStore.entries())
-            .find(([, teacher]) => teacher.id === teacherId);
-
-        if (!existingEntry) {
-            return res.status(404).json({ message: 'Teacher account not found.' });
-        }
-
-        const [existingKey, existingTeacher] = existingEntry;
-        const duplicateUser = teacherStore.get(normalizedTeacherEmail);
-
-        if (duplicateUser && duplicateUser.id !== existingTeacher.id) {
-            return res.status(409).json({ message: 'An account with this email/username already exists.' });
-        }
-
-        if (password || confirmPassword) {
-            // Require admin's password to authorize changing a teacher's password in fallback mode
-            if (!fallbackAdmin.passwordHash || !verifyPassword(oldPassword!, fallbackAdmin.passwordHash)) {
-                return res.status(400).json({ message: 'Admin password is incorrect.' });
-            }
-        }
-
-        const updatedTeacher: MemoryUser = {
-            ...existingTeacher,
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            email: normalizedTeacherEmail,
-            ...(password ? { passwordHash: hashPassword(password) } : {})
-        };
-
-        if (existingKey !== normalizedTeacherEmail) {
-            teacherStore.delete(existingKey);
-        }
-
-        teacherStore.set(normalizedTeacherEmail, updatedTeacher);
-
-        return res.json({
-            message: 'Teacher account updated successfully (temporary in-memory mode).',
-            teacher: buildTeacherListItem(updatedTeacher)
-        });
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -4893,27 +4169,6 @@ app.delete('/api/admin/teachers/:teacherId', async (req: Request, res: Response)
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const teacherStore = getMemoryStoreByRole('teacher');
-        const existingEntry = Array.from(teacherStore.entries())
-            .find(([, teacher]) => teacher.id === teacherId);
-
-        if (!existingEntry) {
-            return res.status(404).json({ message: 'Teacher account not found.' });
-        }
-
-        const [existingKey] = existingEntry;
-        teacherStore.delete(existingKey);
-
-        return res.json({ message: 'Teacher account deleted successfully (temporary in-memory mode).' });
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -4951,28 +4206,6 @@ app.get('/api/admin/classes', async (req: Request, res: Response) => {
     }
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const studentCountsByClass = new Map<string, number>();
-        for (const student of memoryStudents.values()) {
-            studentCountsByClass.set(student.classId, (studentCountsByClass.get(student.classId) ?? 0) + 1);
-        }
-
-        const classes = Array.from(memoryClasses.values())
-            .map((classItem) => ({
-                ...buildClassListItem(classItem),
-                studentCount: studentCountsByClass.get(classItem.id) ?? 0
-            }))
-            .sort((first, second) => first.gradeLevel.localeCompare(second.gradeLevel));
-
-        return res.json({ classes });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -5037,33 +4270,6 @@ app.post('/api/admin/classes', async (req: Request, res: Response) => {
     }
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const classId = randomBytes(12).toString('hex');
-        const newClass: MemoryClass = {
-            id: classId,
-            className: className.trim(),
-            gradeLevel: gradeLevel.trim(),
-            section: section.trim(),
-            subject: subject.trim(),
-            teacherName: teacherName.trim(),
-            studentCount: Math.floor(studentCount)
-        };
-
-        memoryClasses.set(classId, newClass);
-        syncMemoryTeacherAssignmentByName(newClass.teacherName);
-
-        return res.status(201).json({
-            message: 'Class record created successfully (temporary in-memory mode).',
-            classItem: buildClassListItem(newClass)
-        });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({
@@ -5131,39 +4337,6 @@ app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
 
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const existingClass = memoryClasses.get(classId);
-
-        if (!existingClass) {
-            return res.status(404).json({ message: 'Class record not found.' });
-        }
-
-        const updatedClass: MemoryClass = {
-            ...existingClass,
-            className: className.trim(),
-            gradeLevel: gradeLevel.trim(),
-            section: section.trim(),
-            subject: subject.trim(),
-            teacherName: teacherName.trim(),
-            studentCount: Math.floor(studentCount)
-        };
-
-        memoryClasses.set(classId, updatedClass);
-        syncMemoryTeacherAssignmentByName(existingClass.teacherName);
-        syncMemoryTeacherAssignmentByName(updatedClass.teacherName);
-
-        return res.json({
-            message: 'Class record updated successfully (temporary in-memory mode).',
-            classItem: buildClassListItem(updatedClass)
-        });
-    }
-
     if (!isDatabaseReady()) {
         return res.status(503).json({
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
@@ -5229,25 +4402,6 @@ app.delete('/api/admin/classes/:classId', async (req: Request, res: Response) =>
     }
 
     const normalizedAdminEmail = normalizeEmail(requesterEmail);
-
-    if (!isDatabaseReady() && USE_IN_MEMORY_AUTH_FALLBACK) {
-        const fallbackAdmin = getMemoryStoreByRole('administrator').get(normalizedAdminEmail);
-
-        if (!fallbackAdmin) {
-            return res.status(403).json({ message: 'Admin session is not recognized. Please sign in again.' });
-        }
-
-        const existingClass = memoryClasses.get(classId);
-
-        if (!existingClass) {
-            return res.status(404).json({ message: 'Class record not found.' });
-        }
-
-        memoryClasses.delete(classId);
-        syncMemoryTeacherAssignmentByName(existingClass.teacherName);
-
-        return res.json({ message: 'Class record deleted successfully (temporary in-memory mode).' });
-    }
 
     if (!isDatabaseReady()) {
         return res.status(503).json({

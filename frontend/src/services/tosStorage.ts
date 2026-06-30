@@ -86,14 +86,4 @@ export function findLinkedTosRecord(classValue: string, subject: string, quarter
 	return getLinkedTosRecords().find((record) => record.id === targetId) ?? null;
 }
 
-export function deleteLinkedTosRecord(recordId: string): boolean {
-	const current = getLinkedTosRecords();
-	const next = current.filter((record) => record.id !== recordId);
 
-	if (next.length === current.length) {
-		return false;
-	}
-
-	localStorage.setItem(LINKED_TOS_STORAGE_KEY, JSON.stringify(next));
-	return true;
-}

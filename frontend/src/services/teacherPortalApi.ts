@@ -394,13 +394,6 @@ export async function getMyClassesData(): Promise<TeacherClassSummary[]> {
 	}
 }
 
-export async function deleteTeacherClass(classId: string): Promise<void> {
-	await fetchJson<{ message: string }>(`/teacher/my-classes/${encodeURIComponent(classId)}`, {
-		method: 'DELETE',
-		headers: getTeacherAuthHeaders()
-	});
-}
-
 export async function getStudentManagementData(classId?: string): Promise<StudentManagementResponse> {
 	const query = classId ? `?classId=${encodeURIComponent(classId)}` : '';
 	try {

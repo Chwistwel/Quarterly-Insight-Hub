@@ -83,39 +83,6 @@
   gap: 0.65rem;
 }
 
-.auth-role-toggle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
-  padding: 0.3rem;
-  border-radius: 999px;
-  border: 1px solid var(--home-border);
-  background: var(--home-surface-soft);
-}
-
-.auth-role-toggle button {
-  height: 38px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--home-text-soft);
-  font-size: 0.9rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.auth-role-toggle button.active {
-  border-color: var(--home-border);
-  background: var(--home-surface);
-  color: var(--home-accent-strong);
-}
-
-.auth-name-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
 .auth-form label {
   display: grid;
   gap: 0.35rem;
@@ -265,23 +232,9 @@
   font-size: 0.9rem;
 }
 
-.auth-switch button {
-  margin-left: 0.35rem;
-  border: 0;
-  background: transparent;
-  color: var(--home-accent-strong);
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-}
-
 @media (max-width: 640px) {
   .auth-page {
     padding: 0.75rem;
-  }
-
-  .auth-name-grid {
-    grid-template-columns: 1fr;
   }
 
   .auth-meta-row {

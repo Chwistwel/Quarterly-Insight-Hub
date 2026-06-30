@@ -492,7 +492,6 @@ function ItemAnalysis() {
 				studentName: defaultStudentName,
 				firstName: classStudent.firstName,
 				lastName: classStudent.lastName,
-				rank: matchedResult?.rank ?? 0,
 				totalScore: matchedResult?.totalScore ?? 0,
 				notFound: !matchedResult,
 				itemResults: itemResults.map((itemResult) => ({
@@ -502,6 +501,11 @@ function ItemAnalysis() {
 					interpretation: itemResult.interpretation
 				}))
 			};
+		}).map((student, _, all) => {
+			const matched = all.filter((s) => !s.notFound).sort((a, b) => b.totalScore - a.totalScore || a.studentName.localeCompare(b.studentName));
+			const rankMap = new Map<string, number>();
+			matched.forEach((s, i) => rankMap.set(s.id, i + 1));
+			return { ...student, rank: rankMap.get(student.id) ?? 0 };
 		});
 	}, [data?.classStudents, data?.studentItemResults, data?.studentIdentityLinks]);
 
@@ -529,6 +533,9 @@ function ItemAnalysis() {
 		}
 
 		return students.sort((first, second) => {
+			if (first.notFound !== second.notFound) {
+				return first.notFound ? 1 : -1;
+			}
 			const firstLast = normalizeStudentToken(first.lastName || first.studentName);
 			const secondLast = normalizeStudentToken(second.lastName || second.studentName);
 			const firstFirst = normalizeStudentToken(first.firstName || '');

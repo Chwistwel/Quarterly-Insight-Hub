@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import TeacherLayout from './TeacherLayout';
 import {
 	getItemAnalysisData,
@@ -13,6 +13,12 @@ import {
 import { findLinkedTosRecord } from '../../services/tosStorage';
 import '../../styles/TEACHER/MyReports.css';
 
+function getCurrentSchoolYear(): string {
+	const currentYear = new Date().getFullYear();
+	const startYear = new Date().getMonth() >= 6 ? currentYear : currentYear - 1;
+	return `${startYear}-${startYear + 1}`;
+}
+
 type DecisionLabel =
   | 'Accepted as it is'
   | 'Accepted with very slight revision'
@@ -21,24 +27,6 @@ type DecisionLabel =
   | 'Major revision on the stem or choices'
   | 'Needs major revision or may be discarded'
   | 'Totally discard';
-
-
-
-const LOGO_LEFT_URL = '/logos/logo-left.jpeg';
-const LOGO_RIGHT_URL = '/logos/logo-right.png';
-
-const loadImageAsBase64 = (url: string): Promise<string> => {
-	return new Promise((resolve) => {
-		fetch(url)
-			.then((r) => r.blob())
-			.then((blob) => {
-				const reader = new FileReader();
-				reader.onloadend = () => resolve(reader.result as string);
-				reader.readAsDataURL(blob);
-			})
-			.catch(() => resolve(''));
-	});
-};
 
 const SCHOOL_REGION = 'Department of Education - Region III';
 const SCHOOL_DIVISION = 'Division of OLONGAPO';
@@ -95,7 +83,6 @@ type DownloadableReport = {
 	updatedAt: string;
 	downloadLabel: string;
 	onDownload: () => void;
-	disabled?: boolean;
 };
 
 function toNumber(value: number | string | undefined): number {
@@ -120,15 +107,6 @@ function getDiscriminationLabel(value: number): DiscriminationBand {
 	if (value >= 0.2) return 'Moderately Discriminating';
 	if (value >= 0) return 'Slightly Discriminating';
 	return 'Not Discriminating';
-}
-
-function getDecision(value: number): string {
-	if (value >= 0.4) return 'Accepted';
-	if (value >= 0.3) return 'Accepted with slight revision';
-	if (value >= 0.2) return 'Accepted with revision';
-	if (value >= 0.1) return 'May be accepted with major revision';
-	if (value >= 0) return 'Needs major revision';
-	return 'Totally discard';
 }
 
 function average(values: number[]): number {
@@ -250,7 +228,10 @@ function MyReports() {
 	const [selectedQuarter, setSelectedQuarter] = useState('');
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [reportError] = useState<string | null>(null);
+	const [lastUpdatedAt, setLastUpdatedAt] = useState(
+		new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+	);
+
 	const resolvedClass = (itemAnalysisData?.selectedClass ?? selectedClass).trim();
 	const resolvedSubject = (itemAnalysisData?.selectedSubject ?? selectedSubject).trim();
 	const resolvedQuarter = (itemAnalysisData?.selectedQuarter ?? selectedQuarter).trim();
@@ -371,7 +352,7 @@ function MyReports() {
 				discriminationIndex,
 				difficultyLabel: getDifficultyLabel(difficultyIndex),
 				discriminationLabel: getDiscriminationLabel(discriminationIndex),
-				decision: getDecision(discriminationIndex),
+				decision: computeDecision(row.difficultyIndex, row.discriminationIndex),
 				totalCorrect,
 				contentArea,
 				intervention
@@ -380,17 +361,8 @@ function MyReports() {
 	}, [itemAnalysisData?.rows, selectedLinkedRecord, tosCompetencyMap, analysisRespondentCount, itemCorrectCounts]);
 
 	const scoreSummary = useMemo(() => {
-		const scores = rosterStudents.map((student) => toNumber(student.average));
-		if (!scores.length) {
-			const fromResults = (itemAnalysisData?.studentResults ?? []).map((r) => toNumber(r.totalScore));
-			if (fromResults.length) {
-				const highest = Math.max(...fromResults);
-				const lowest = Math.min(...fromResults);
-				const passCount = fromResults.filter((s) => s >= 75).length;
-				const failCount = fromResults.length - passCount;
-				const top27Count = analysisRespondentCount > 0 ? Math.max(1, Math.round(analysisRespondentCount * 0.27)) : 0;
-				return { totalStudents: fromResults.length, respondentCount: analysisRespondentCount, highest, lowest, passCount, failCount, top27Count };
-			}
+		const analysisScores = (itemAnalysisData?.studentResults ?? []).map((r) => toNumber(r.totalScore));
+		if (!analysisScores.length) {
 			const fromItemResults = (itemAnalysisData?.studentItemResults ?? []).map((r) => toNumber(r.totalScore));
 			if (fromItemResults.length) {
 				const highest = Math.max(...fromItemResults);
@@ -405,22 +377,22 @@ function MyReports() {
 				const derivedMean = reportRows.reduce((s, r) => s + r.difficultyIndex, 0);
 				return { totalStudents: analysisRespondentCount || reportRows.length, respondentCount: analysisRespondentCount || reportRows.length, highest: derivedMean, lowest: 0, passCount: 0, failCount: 0, top27Count };
 			}
+			const rosterScores = rosterStudents.map((student) => toNumber(student.average));
+			if (rosterScores.length) {
+				const highest = Math.max(...rosterScores);
+				const lowest = Math.min(...rosterScores);
+				const passCount = rosterScores.filter((score) => score >= 75).length;
+				const failCount = rosterScores.length - passCount;
+				const top27Count = analysisRespondentCount > 0 ? Math.max(1, Math.round(analysisRespondentCount * 0.27)) : 0;
+				return { totalStudents: enrolledStudentCount || actualTotalStudents, respondentCount: analysisRespondentCount, highest, lowest, passCount, failCount, top27Count };
+			}
 		}
-		const highest = scores.length ? Math.max(...scores) : 0;
-		const lowest = scores.length ? Math.min(...scores) : 0;
-		const passCount = scores.filter((score) => score >= 75).length;
-		const failCount = scores.length - passCount;
+		const highest = Math.max(...analysisScores);
+		const lowest = Math.min(...analysisScores);
+		const passCount = analysisScores.filter((s) => s >= 75).length;
+		const failCount = analysisScores.length - passCount;
 		const top27Count = analysisRespondentCount > 0 ? Math.max(1, Math.round(analysisRespondentCount * 0.27)) : 0;
-
-		return {
-			totalStudents: enrolledStudentCount || actualTotalStudents,
-			respondentCount: analysisRespondentCount,
-			highest,
-			lowest,
-			passCount,
-			failCount,
-			top27Count
-		};
+		return { totalStudents: analysisScores.length, respondentCount: analysisRespondentCount, highest, lowest, passCount, failCount, top27Count };
 	}, [rosterStudents, enrolledStudentCount, analysisRespondentCount, itemAnalysisData?.studentResults, itemAnalysisData?.studentItemResults, reportRows]);
 
 	const topLeastLearned = useMemo(() => {
@@ -432,23 +404,23 @@ function MyReports() {
 	const reportKpis = useMemo(() => {
 		const avgDifficulty = average(reportRows.map((row) => row.difficultyIndex));
 		const avgDiscrimination = average(reportRows.map((row) => row.discriminationIndex));
-		const rosterScores = rosterStudents.map((student) => toNumber(student.average));
-		let meanScore = rosterScores.length ? average(rosterScores) : 0;
-		let totalScore = rosterScores.length ? rosterScores.reduce((sum, s) => sum + s, 0) : 0;
-		if (!rosterScores.length) {
-			const fromResults = (itemAnalysisData?.studentResults ?? []).map((r) => toNumber(r.totalScore));
-			if (fromResults.length) {
-				meanScore = average(fromResults);
-				totalScore = fromResults.reduce((sum, s) => sum + s, 0);
+		const fromResults = (itemAnalysisData?.studentResults ?? []).map((r) => toNumber(r.totalScore));
+		let meanScore = fromResults.length ? average(fromResults) : 0;
+		let totalScore = fromResults.length ? fromResults.reduce((sum, s) => sum + s, 0) : 0;
+		if (!fromResults.length) {
+			const fromItemResults = (itemAnalysisData?.studentItemResults ?? []).map((r) => toNumber(r.totalScore));
+			if (fromItemResults.length) {
+				meanScore = average(fromItemResults);
+				totalScore = fromItemResults.reduce((sum, s) => sum + s, 0);
+			} else if (reportRows.length) {
+				const derivedMean = reportRows.reduce((sum, r) => sum + r.difficultyIndex, 0);
+				meanScore = derivedMean;
+				totalScore = derivedMean * (analysisRespondentCount || 1);
 			} else {
-				const fromItemResults = (itemAnalysisData?.studentItemResults ?? []).map((r) => toNumber(r.totalScore));
-				if (fromItemResults.length) {
-					meanScore = average(fromItemResults);
-					totalScore = fromItemResults.reduce((sum, s) => sum + s, 0);
-				} else if (reportRows.length) {
-					const derivedMean = reportRows.reduce((sum, r) => sum + r.difficultyIndex, 0);
-					meanScore = derivedMean;
-					totalScore = derivedMean * (analysisRespondentCount || 1);
+				const rosterScores = rosterStudents.map((student) => toNumber(student.average));
+				if (rosterScores.length) {
+					meanScore = average(rosterScores);
+					totalScore = rosterScores.reduce((sum, s) => sum + s, 0);
 				}
 			}
 		}
@@ -468,12 +440,9 @@ function MyReports() {
 		return `${classToken}_${subjectToken}_${quarterToken}`;
 	}, [resolvedClass, resolvedSubject, resolvedQuarter]);
 
-	const updatedAtLabel = useMemo(
-		() => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-		[]
-	);
+	const updatedAtLabel = lastUpdatedAt;
 
-	const handleDownloadItemAnalysisMatrix = () => {
+	const handleDownloadItemAnalysisMatrix = useCallback(() => {
 		downloadCsvFile(
 			`item-analysis-matrix_${contextToken}.csv`,
 			['Item No', 'Total Correct', 'Difficulty Index', 'Difficulty Interpretation', 'Discrimination Index', 'Discrimination Interpretation', 'Decision'],
@@ -487,9 +456,9 @@ function MyReports() {
 				row.decision
 			])
 		);
-	};
+	}, [contextToken, reportRows]);
 
-	const handleDownloadClassSummary = () => {
+	const handleDownloadClassSummary = useCallback(() => {
 		downloadCsvFile(
 			`class-performance-summary_${contextToken}.csv`,
 			['Class', 'Subject', 'Quarter', 'Total Students', 'Highest Score', 'Lowest Score', 'Mean Score', 'MPS', 'Passing', 'Failing'],
@@ -506,27 +475,45 @@ function MyReports() {
 				scoreSummary.failCount
 			]]
 		);
-	};
+	}, [contextToken, resolvedClass, resolvedSubject, resolvedQuarter, scoreSummary, reportKpis]);
 
-	const handleDownloadStudentRanking = () => {
+	const handleDownloadStudentRanking = useCallback(() => {
+		const scoreByName = new Map<string, number>();
+		const totalItems = itemAnalysisData?.rows?.length ?? 0;
+		(itemAnalysisData?.studentItemResults ?? []).forEach((r) => {
+			const key = normalizeStudentIdentityToken(r.studentName ?? '');
+			if (key) scoreByName.set(key, Number(r.totalScore) || 0);
+		});
+		(itemAnalysisData?.studentResults ?? []).forEach((r) => {
+			const key = normalizeStudentIdentityToken(r.studentName ?? '');
+			if (key && !scoreByName.has(key)) scoreByName.set(key, Number(r.totalScore) || 0);
+		});
+
 		const sortedStudents = [...rosterStudents]
 			.sort((first, second) => (Number(first.ranking) || 0) - (Number(second.ranking) || 0));
 
 		downloadCsvFile(
 			`student-ranking_${contextToken}.csv`,
 			['Rank', 'Name', 'Grade', 'Section', 'Subject', 'Average'],
-			sortedStudents.map((student) => [
-				student.ranking,
-				student.name,
-				student.grade,
-				student.section,
-				student.subject,
-				student.average
-			])
+			sortedStudents.map((student) => {
+				const nameKey = normalizeStudentIdentityToken(`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim() || student.name);
+				const rawScore = nameKey ? scoreByName.get(nameKey) : undefined;
+				const average = rawScore !== undefined && totalItems > 0
+					? `${(rawScore / totalItems * 100).toFixed(1)}%`
+					: student.average;
+				return [
+					student.ranking,
+					student.name,
+					student.grade,
+					student.section,
+					student.subject,
+					average
+				];
+			})
 		);
-	};
+	}, [contextToken, rosterStudents, itemAnalysisData]);
 
-	const handleDownloadInterventionList = () => {
+	const handleDownloadInterventionList = useCallback(() => {
 		downloadCsvFile(
 			`least-learned-interventions_${contextToken}.csv`,
 			['Item Number', 'Difficulty Index', 'Content Area', 'Intervention'],
@@ -537,7 +524,7 @@ function MyReports() {
 				row.intervention
 			])
 		);
-	};
+	}, [contextToken, topLeastLearned]);
 
 	function downloadWordFile(fileName: string, htmlContent: string) {
 		const style = `
@@ -571,10 +558,10 @@ function MyReports() {
 
 
 	const handleGenerateWordReport = async () => {
-		let data = itemAnalysisData;
+		let analysis = itemAnalysisData;
 		const filterKey = `${selectedClass}|${selectedSubject}|${selectedQuarter}`;
 		const lastFilter = sessionStorage.getItem('wordReportFilter');
-		if (!data?.rows?.length || lastFilter !== filterKey) {
+		if (!analysis?.rows?.length || lastFilter !== filterKey) {
 			try {
 				const [analysisPayload, studentsPayload] = await Promise.all([
 					getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
@@ -583,19 +570,12 @@ function MyReports() {
 				setItemAnalysisData(analysisPayload);
 				setStudents(studentsPayload.students ?? []);
 				sessionStorage.setItem('wordReportFilter', filterKey);
-				data = analysisPayload;
+				analysis = analysisPayload;
 			} catch {
 				return;
 			}
 		}
-		const rows = data?.rows ?? [];
-		if (!rows.length) return;
-
-		const [loadedLogoLeft, loadedLogoRight] = await Promise.all([
-			loadImageAsBase64(LOGO_LEFT_URL),
-			loadImageAsBase64(LOGO_RIGHT_URL)
-		]);
-
+		const rows = analysis?.rows ?? [];
 		const schoolYear = new Date().getFullYear();
 		const classLabel = resolvedClass || 'N/A';
 		const parsedClass = parseClassLabel(classLabel);
@@ -604,7 +584,7 @@ function MyReports() {
 		const numItems = rows.length;
 
 		const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();
-		(data?.studentItemResults ?? []).forEach((sr) => {
+		(analysis?.studentItemResults ?? []).forEach((sr) => {
 			(sr.itemResults ?? []).forEach((ir) => {
 				const itemNo = Number(ir.itemNo);
 				if (!Number.isFinite(itemNo)) return;
@@ -628,11 +608,11 @@ function MyReports() {
 			return `<tr><td>${itemNo}</td><td>${diff.toFixed(2)}</td><td>${difficultyLabel}</td><td>${disc.toFixed(2)}</td><td>${itemResult}</td><td>${row.interpretation || ''}</td><td>${decision}</td></tr>`;
 		}).join('');
 
-		const takers = (data?.studentItemResults ?? data?.studentResults ?? []).length;
-		const totalStudentsNum = Number(data?.totalStudents) || data?.studentIdentityLinks?.length || takers || 0;
+		const takers = (analysis?.studentItemResults ?? analysis?.studentResults ?? []).length;
+		const totalStudentsNum = Number(analysis?.totalStudents) || analysis?.studentIdentityLinks?.length || takers || 0;
 		const topBottomCount = takers > 0 ? Math.max(1, Math.round(takers * 0.27)) : 0;
 
-		const sortedRows = [...(data?.rows ?? [])].map((r, i) => ({
+		const sortedRows = [...(analysis?.rows ?? [])].map((r, i) => ({
 			itemNo: Number(r.itemNo) || i + 1,
 			diffValue: parseIndexValue(r.difficultyIndex) ?? 0
 		})).sort((a, b) => b.diffValue - a.diffValue);
@@ -656,7 +636,7 @@ function MyReports() {
 			return `<tr><td>${item.itemNo}</td><td class="left">${contentArea}</td><td class="left">${intervention}</td></tr>`;
 		}).join('');
 
-		const scores = (data?.studentResults ?? data?.studentItemResults ?? [])
+		const scores = (analysis?.studentResults ?? analysis?.studentItemResults ?? [])
 			.map((r) => Number(r.totalScore))
 			.filter((s) => Number.isFinite(s));
 		const analysisScores = scores.length > 0 ? {
@@ -669,29 +649,16 @@ function MyReports() {
 			failing: scores.filter((s) => s < Math.ceil(numItems / 2)).length
 		} : null;
 
-		const logoLeft = loadedLogoLeft
-			? `<img src="${loadedLogoLeft}" style="width:auto;height:8px;object-fit:contain;"/>`
-			: `<div style="width:8px;height:8px;border:1px solid #ccc;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:3pt;color:#ccc;">Logo</div>`;
-		const logoRight = loadedLogoRight
-			? `<img src="${loadedLogoRight}" style="width:auto;height:28px;object-fit:contain;"/>`
-			: `<div style="width:28px;height:28px;border:1px solid #ccc;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:6pt;color:#ccc;">Logo</div>`;
-
 		const now = new Date();
 		const html = `
-			<table style="width:100%;border:none;margin-bottom:6px;">
-				<tr style="border:none;">
-					<td style="border:none;width:38px;text-align:center;vertical-align:middle;">${logoLeft}</td>
-					<td style="border:none;text-align:center;vertical-align:middle;">
-						<div style="font-size:11pt;font-weight:700;">${SCHOOL_REGION}</div>
-						<div style="font-size:12pt;font-weight:700;">${SCHOOL_DIVISION}</div>
-						<div style="font-size:11pt;font-weight:700;">${SCHOOL_DISTRICT}</div>
-						<div style="font-size:13pt;font-weight:700;margin-top:4px;">${SCHOOL_NAME}</div>
-						<div style="font-size:11pt;font-weight:700;margin-top:6px;">Item Analysis in ${resolvedSubject || 'N/A'} for ${gradeSection}</div>
-						<div style="font-size:11pt;">SY ${schoolYear} - ${schoolYear + 1}</div>
-					</td>
-					<td style="border:none;width:38px;text-align:center;vertical-align:middle;">${logoRight}</td>
-				</tr>
-			</table>
+			<div style="text-align:center;margin-bottom:6px;">
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_REGION}</div>
+				<div style="font-size:12pt;font-weight:700;">${SCHOOL_DIVISION}</div>
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_DISTRICT}</div>
+				<div style="font-size:13pt;font-weight:700;margin-top:4px;">${SCHOOL_NAME}</div>
+				<div style="font-size:11pt;font-weight:700;margin-top:6px;">Item Analysis in ${resolvedSubject || 'N/A'} for ${gradeSection}</div>
+				<div style="font-size:11pt;">SY ${schoolYear} - ${schoolYear + 1}</div>
+			</div>
 
 			<hr style="border:1px solid #000;margin:4px 0;"/>
 
@@ -763,11 +730,292 @@ function MyReports() {
 			<div class="footer">Generated on ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | School Year ${schoolYear}-${schoolYear + 1}</div>
 		`;
 
+		downloadWordFile(`executive-summary_${contextToken}.doc`, html);
+	};
+
+	const handleGenerateItemAnalysisReport = async () => {
+		let analysis = itemAnalysisData;
+		const filterKey = `${selectedClass}|${selectedSubject}|${selectedQuarter}`;
+		const lastFilter = sessionStorage.getItem('wordReportFilter');
+		if (!analysis?.rows?.length || lastFilter !== filterKey) {
+			try {
+				const [analysisPayload] = await Promise.all([
+					getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter)
+				]);
+				setItemAnalysisData(analysisPayload);
+				sessionStorage.setItem('wordReportFilter', filterKey);
+				analysis = analysisPayload;
+			} catch {
+				return;
+			}
+		}
+		const rows = analysis?.rows ?? [];
+		const schoolYear = new Date().getFullYear();
+		const classLabel = resolvedClass || 'N/A';
+		const parsedClass = parseClassLabel(classLabel);
+		const gradeSection = parsedClass.section ? `${parsedClass.grade}/${parsedClass.section}` : classLabel;
+
+		const numItems = rows.length;
+
+		const itemResultStats = new Map<number, { correctCount: number; totalCount: number }>();
+		(analysis?.studentItemResults ?? []).forEach((sr) => {
+			(sr.itemResults ?? []).forEach((ir) => {
+				const itemNo = Number(ir.itemNo);
+				if (!Number.isFinite(itemNo)) return;
+				const current = itemResultStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+				current.totalCount += 1;
+				if (String(ir.interpretation ?? '').trim().toLowerCase() === 'correct') {
+					current.correctCount += 1;
+				}
+				itemResultStats.set(itemNo, current);
+			});
+		});
+
+		const analysisRows = rows.map((row, i) => {
+			const itemNo = Number(row.itemNo) || i + 1;
+			const diff = parseIndexValue(row.difficultyIndex) ?? 0;
+			const disc = parseIndexValue(row.discriminationIndex) ?? 0;
+			const difficultyLabel = row.difficultyLabel || getDifficultyLabel(diff);
+			const decision = computeDecision(row.difficultyIndex, row.discriminationIndex);
+			const stats = itemResultStats.get(itemNo) ?? { correctCount: 0, totalCount: 0 };
+			const itemResult = stats.totalCount > 0 ? `${stats.correctCount}/${stats.totalCount}` : row.interpretation || '';
+			return `<tr><td>${itemNo}</td><td>${diff.toFixed(2)}</td><td>${difficultyLabel}</td><td>${disc.toFixed(2)}</td><td>${itemResult}</td><td>${row.interpretation || ''}</td><td>${decision}</td></tr>`;
+		}).join('');
+
+		const takers = (analysis?.studentItemResults ?? analysis?.studentResults ?? []).length;
+		const totalStudentsNum = Number(analysis?.totalStudents) || analysis?.studentIdentityLinks?.length || takers || 0;
+		const topBottomCount = takers > 0 ? Math.max(1, Math.round(takers * 0.27)) : 0;
+
+		const scores = (analysis?.studentResults ?? analysis?.studentItemResults ?? [])
+			.map((r) => Number(r.totalScore))
+			.filter((s) => Number.isFinite(s));
+		const analysisScores = scores.length > 0 ? {
+			highest: Math.max(...scores).toFixed(1),
+			lowest: Math.min(...scores).toFixed(1),
+			mean: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2),
+			mps: numItems > 0 ? ((scores.reduce((a, b) => a + b, 0) / scores.length) / numItems * 100).toFixed(2) : '0.00',
+			total: scores.reduce((a, b) => a + b, 0).toFixed(0),
+			passing: scores.filter((s) => s >= Math.ceil(numItems / 2)).length,
+			failing: scores.filter((s) => s < Math.ceil(numItems / 2)).length
+		} : null;
+
+		const now = new Date();
+		const html = `
+			<div style="text-align:center;margin-bottom:6px;">
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_REGION}</div>
+				<div style="font-size:12pt;font-weight:700;">${SCHOOL_DIVISION}</div>
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_DISTRICT}</div>
+				<div style="font-size:13pt;font-weight:700;margin-top:4px;">${SCHOOL_NAME}</div>
+				<div style="font-size:11pt;font-weight:700;margin-top:6px;">Item Analysis Report in ${resolvedSubject || 'N/A'} for ${gradeSection}</div>
+				<div style="font-size:11pt;">SY ${schoolYear} - ${schoolYear + 1}</div>
+			</div>
+
+			<hr style="border:1px solid #000;margin:4px 0;"/>
+
+			<table style="width:100%;border:none;margin:4px 0 8px;">
+				<tr style="border:none;">
+					<td style="border:none;width:50%;vertical-align:top;">
+						<table style="border-collapse:collapse;font-size:9pt;width:100%;">
+							<tr><td style="border:1px solid #000;padding:3px 6px;font-weight:700;background:#d9e1f2;" colspan="2">Summary</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">Total No. of Students</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${totalStudentsNum}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">Number of Takers</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${takers}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">No. of Highest Scorers (27%)</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${topBottomCount}</td></tr>
+							<tr><td style="border:1px solid #000;padding:2px 6px;">No. of Lowest Scorers (27%)</td><td style="border:1px solid #000;padding:2px 6px;font-weight:700;text-align:center;">${topBottomCount}</td></tr>
+						</table>
+					</td>
+					<td style="border:none;width:50%;vertical-align:top;text-align:right;">
+						<div style="font-size:10pt;font-weight:700;margin-top:4px;">Quarter: ${resolvedQuarter || 'N/A'}</div>
+					</td>
+				</tr>
+			</table>
+
+			<div class="section">I. Item Analysis Matrix</div>
+			<table><thead><tr><th>Item No</th><th>Difficulty Index</th><th>Difficulty</th><th>Discrimination Index</th><th>Item Result</th><th>Interpretation</th><th>Decision</th></tr></thead><tbody>${analysisRows || '<tr><td colspan="7" style="text-align:center;">No item analysis data available.</td></tr>'}</tbody></table>
+
+			${analysisScores ? `
+			<div class="score-summary">
+				<strong>Score Summary:</strong>
+				${analysisScores.highest} Highest Score | ${analysisScores.lowest} Lowest Score |
+				${analysisScores.mean} Mean | ${analysisScores.mps}% MPS |
+				${analysisScores.total} Total Score | ${analysisScores.passing} Passing |
+				${analysisScores.failing} Failing
+			</div>` : `
+			<div class="score-summary">
+				<strong>Class Performance:</strong> Total Items: ${numItems}
+			</div>`}
+
+			<br/>
+			<div class="section">IV. Certification</div>
+			<table style="width:100%;border:none;margin-top:6px;">
+				<tr style="border:none;">
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Prepared by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">EUGENE F. DIMALANTA</div>
+						<div style="font-size:8pt;margin-top:1px;">SPET I</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Reviewed &amp; Checked by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">WILLIAM D. GARCIA, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">Master Teacher I</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Contents Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MILLETTE B. SARMIENTO, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">OIC-Asst. Principal</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MARCIAL D. MORTERA</div>
+						<div style="font-size:8pt;margin-top:1px;">Principal IV</div>
+					</td>
+				</tr>
+			</table>
+
+			<div class="footer">Generated on ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | School Year ${schoolYear}-${schoolYear + 1}</div>
+		`;
+
 		downloadWordFile(`item-analysis-report_${contextToken}.doc`, html);
 	};
 
-	const hasReportData = reportRows.length > 0;
-	const hasStudentData = rosterStudents.length > 0;
+	const handleGenerateTosReport = () => {
+		const schoolYear = getCurrentSchoolYear();
+
+		const draftKey = [
+			'teacher-tos-builder-draft',
+			normalizeTextToken(resolvedClass),
+			normalizeTextToken(resolvedSubject),
+			normalizeQuarterForLookup(resolvedQuarter)
+		].join('::');
+		const raw = localStorage.getItem(draftKey) ?? localStorage.getItem('teacher-tos-builder-draft');
+		let draft: {
+			rows?: Array<{
+				competency?: string;
+				days?: number;
+				percentage?: number;
+				counts?: Partial<Record<'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating', number>>;
+			}>;
+			totalDays?: number;
+			totalItems?: number;
+			objectiveCount?: number;
+			bloomWeights?: Partial<Record<'remembering' | 'understanding' | 'applying' | 'analyzing' | 'evaluating' | 'creating', number>>;
+		} | null = null;
+		if (raw) {
+			try {
+				const parsed = JSON.parse(raw);
+				if (
+					normalizeTextToken(String(parsed.classValue ?? '')) === normalizeTextToken(resolvedClass) &&
+					normalizeTextToken(String(parsed.subject ?? '')) === normalizeTextToken(resolvedSubject) &&
+					normalizeQuarterForLookup(String(parsed.quarter ?? '')) === normalizeQuarterForLookup(resolvedQuarter)
+				) {
+					draft = parsed;
+				}
+			} catch {
+				// ignore parse errors
+			}
+		}
+
+		const rows = draft?.rows ?? [];
+		const bloomOrder = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating'] as const;
+		const bloomLabels: Record<string, string> = { remembering: 'Rem', understanding: 'Und', applying: 'App', analyzing: 'Anl', evaluating: 'Eva', creating: 'Cre' };
+
+		let pointer = 1;
+		const placements: Record<number, Record<string, string>> = {};
+		rows.forEach((_row, rowIndex) => {
+			const p: Record<string, string> = {};
+			bloomOrder.forEach((key) => {
+				const count = Number((_row as any).counts?.[key] ?? 0);
+				if (count <= 0) {
+					p[key] = '-';
+					return;
+				}
+				const values: number[] = [];
+				for (let i = 0; i < count; i += 1) {
+					values.push(pointer);
+					pointer += 1;
+				}
+				p[key] = values.join(', ');
+			});
+			placements[rowIndex] = p;
+		});
+
+		const tosRows = rows.map((row, rowIndex) => {
+			const cells = bloomOrder.map((key) => {
+				const count = Number((row as any).counts?.[key] ?? 0) || 0;
+				const poi = placements[rowIndex]?.[key] ?? '-';
+				return `<td>${count || ''}</td><td>${poi}</td>`;
+			}).join('');
+			const total = bloomOrder.reduce((sum, key) => sum + (Number((row as any).counts?.[key] ?? 0) || 0), 0);
+			return `<tr><td class="left">${row.competency || ''}</td><td>${row.days ?? ''}</td><td>${row.percentage !== undefined ? Number(row.percentage).toFixed(1) : ''}</td>${cells}<td>${total || ''}</td></tr>`;
+		}).join('');
+
+		const classLabel = resolvedClass || 'N/A';
+		const parsedClass = parseClassLabel(classLabel);
+		const gradeSection = parsedClass.section ? `${parsedClass.grade}/${parsedClass.section}` : classLabel;
+
+		const summaryRows = draft ? [
+			`<tr><td colspan="3" style="border:1px solid #000;padding:2px 6px;font-weight:700;">Total Days</td><td colspan="13" style="border:1px solid #000;padding:2px 6px;">${draft.totalDays ?? 0}</td></tr>`,
+			`<tr><td colspan="3" style="border:1px solid #000;padding:2px 6px;font-weight:700;">Total Items</td><td colspan="13" style="border:1px solid #000;padding:2px 6px;">${draft.totalItems ?? 0}</td></tr>`,
+			`<tr><td colspan="3" style="border:1px solid #000;padding:2px 6px;font-weight:700;">No. of Objectives</td><td colspan="13" style="border:1px solid #000;padding:2px 6px;">${draft.objectiveCount ?? 0}</td></tr>`,
+			`<tr><td colspan="3" style="border:1px solid #000;padding:2px 6px;font-weight:700;">Bloom's Weights</td><td colspan="13" style="border:1px solid #000;padding:2px 6px;">${bloomOrder.map((k) => `${bloomLabels[k]}: ${(draft as any).bloomWeights?.[k] ?? 0}`).join(' | ')}</td></tr>`
+		].join('') : '';
+
+		const noDataRow = '<tr><td colspan="16" style="text-align:center;">No TOS data available. Create a TOS in the TOS Builder for this class, subject, and quarter.</td></tr>';
+
+		const now = new Date();
+		const html = `
+			<div style="text-align:center;margin-bottom:6px;">
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_REGION}</div>
+				<div style="font-size:12pt;font-weight:700;">${SCHOOL_DIVISION}</div>
+				<div style="font-size:11pt;font-weight:700;">${SCHOOL_DISTRICT}</div>
+				<div style="font-size:13pt;font-weight:700;margin-top:4px;">${SCHOOL_NAME}</div>
+				<div style="font-size:11pt;font-weight:700;margin-top:6px;">Table of Specifications in ${resolvedSubject || 'N/A'} for ${gradeSection}</div>
+				<div style="font-size:11pt;">SY ${schoolYear}</div>
+			</div>
+
+			<hr style="border:1px solid #000;margin:4px 0;"/>
+
+			<div style="font-size:10pt;font-weight:700;margin:4px 0;">Quarter: ${resolvedQuarter || 'N/A'}</div>
+
+			<div class="section">Table of Specifications</div>
+			<table><thead><tr><th style="border:1px solid #000;padding:3px 6px;">Competency</th><th style="border:1px solid #000;padding:3px 6px;">Days</th><th style="border:1px solid #000;padding:3px 6px;">%</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.remembering}</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.understanding}</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.applying}</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.analyzing}</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.evaluating}</th><th style="border:1px solid #000;padding:3px 6px;" colspan="2">${bloomLabels.creating}</th><th style="border:1px solid #000;padding:3px 6px;">Total</th></tr><tr><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;"> </th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;"> </th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;"> </th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">NOI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;">POI</th><th style="border:1px solid #000;padding:2px 4px;font-size:8pt;"> </th></tr></thead><tbody>${tosRows || noDataRow}</tbody></table>
+
+			${summaryRows ? `
+			<br/>
+			<div class="section">Summary</div>
+			<table style="width:100%;border-collapse:collapse;font-size:9pt;">${summaryRows}</table>` : ''}
+
+			<br/>
+			<div class="section">IV. Certification</div>
+			<table style="width:100%;border:none;margin-top:6px;">
+				<tr style="border:none;">
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Prepared by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">EUGENE F. DIMALANTA</div>
+						<div style="font-size:8pt;margin-top:1px;">SPET I</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Reviewed &amp; Checked by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">WILLIAM D. GARCIA, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">Master Teacher I</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Contents Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MILLETTE B. SARMIENTO, EdD</div>
+						<div style="font-size:8pt;margin-top:1px;">OIC-Asst. Principal</div>
+					</td>
+					<td style="border:none;width:25%;text-align:center;vertical-align:bottom;">
+						<div style="margin-top:46px;border-top:1px solid #000;display:inline-block;padding:0 8px;font-size:9pt;font-weight:700;white-space:nowrap;">Noted by:</div>
+						<div style="font-size:8pt;font-weight:700;margin-top:4px;white-space:nowrap;">MARCIAL D. MORTERA</div>
+						<div style="font-size:8pt;margin-top:1px;">Principal IV</div>
+					</td>
+				</tr>
+			</table>
+
+			<div class="footer">Generated on ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | School Year ${schoolYear}</div>
+		`;
+
+		downloadWordFile(`tos-report_${contextToken}.doc`, html);
+	};
 
 	const downloadableReports = useMemo<DownloadableReport[]>(() => {
 		return [
@@ -776,43 +1024,36 @@ function MyReports() {
 				title: 'Item Analysis Matrix',
 				description: 'Per-item difficulty, discrimination, and decision summary for your selected class.',
 				updatedAt: updatedAtLabel,
-				downloadLabel: 'Download CSV',
-				onDownload: handleDownloadItemAnalysisMatrix,
-				disabled: !hasReportData
+				downloadLabel: 'Download',
+				onDownload: handleDownloadItemAnalysisMatrix
 			},
 			{
 				id: 'class-performance-summary',
 				title: 'Class Performance Summary',
 				description: 'Class-level performance totals, mean score, MPS, and pass/fail counts.',
 				updatedAt: updatedAtLabel,
-				downloadLabel: 'Download CSV',
-				onDownload: handleDownloadClassSummary,
-				disabled: !hasReportData
+				downloadLabel: 'Download',
+				onDownload: handleDownloadClassSummary
 			},
 			{
 				id: 'student-ranking-list',
-				title: 'Student Ranking List',
+				title: 'Student Ranking Sheet',
 				description: 'Student ranking and average scores for the selected class and subject.',
 				updatedAt: updatedAtLabel,
-				downloadLabel: 'Download CSV',
-				onDownload: handleDownloadStudentRanking,
-				disabled: !hasStudentData
+				downloadLabel: 'Download',
+				onDownload: handleDownloadStudentRanking
 			},
 			{
 				id: 'least-learned-interventions',
 				title: 'Least Learned With Interventions',
 				description: 'Targeted least-learned items with linked content-area gaps and interventions.',
 				updatedAt: updatedAtLabel,
-				downloadLabel: 'Download CSV',
-				onDownload: handleDownloadInterventionList,
-				disabled: topLeastLearned.length === 0
+				downloadLabel: 'Download',
+				onDownload: handleDownloadInterventionList
 			}
 		];
 	}, [
 		updatedAtLabel,
-		hasReportData,
-		hasStudentData,
-		topLeastLearned.length,
 		handleDownloadItemAnalysisMatrix,
 		handleDownloadClassSummary,
 		handleDownloadStudentRanking,
@@ -842,6 +1083,7 @@ function MyReports() {
 				const initialSubject = analysisPayload.selectedSubject ?? classSubjects[0] ?? uploadMetaPayload.subjects[0] ?? '';
 				const initialQuarter = analysisPayload.selectedQuarter ?? uploadMetaPayload.quarters[0] ?? 'First';
 
+				setLastUpdatedAt(new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }));
 				setSelectedClass(initialClass);
 				setSelectedSubject(initialSubject);
 				setSelectedQuarter(initialQuarter);
@@ -877,6 +1119,7 @@ function MyReports() {
 					getItemAnalysisData(selectedClass, selectedSubject, selectedQuarter),
 					getStudentManagementData()
 				]);
+				setLastUpdatedAt(new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }));
 				setItemAnalysisData(analysisPayload);
 				setStudents(studentsPayload.students ?? []);
 			} catch (loadError) {
@@ -906,7 +1149,7 @@ function MyReports() {
 
 			{loading ? <p className="teacher-status">Loading reports...</p> : null}
 			{error ? <p className="teacher-status teacher-status-error">{error}</p> : null}
-			{reportError ? <p className="teacher-status teacher-status-error">{reportError}</p> : null}
+
 
 			<section className="teacher-panel report-builder-panel no-print">
 				<div className="teacher-panel-head">
@@ -939,16 +1182,19 @@ function MyReports() {
 
 			<div className="reports-action-grid no-print">
 				<article className="reports-action-card">
-					<h3>Executive Summary (DOCS)</h3>
-					<p>Same complete report in Microsoft Word document format. Ideal for printing and submission.</p>
-					<button type="button" onClick={handleGenerateWordReport} disabled={!itemAnalysisData?.rows?.length}>
-						Download DOCS
-					</button>
+					<h3>Executive Summary</h3>
+					<p>Combines item analysis data and Table of Specifications into one comprehensive report with certification.</p>
+					<button type="button" onClick={handleGenerateWordReport}>Generate Report</button>
 				</article>
 				<article className="reports-action-card green">
-					<h3>Student Ranking Sheet</h3>
-					<p>Download a ranking list with student averages for your class.</p>
-					<button type="button" onClick={handleDownloadStudentRanking} disabled={!hasStudentData}>Download CSV</button>
+					<h3>Item Analysis Report</h3>
+					<p>Item-level analysis with difficulty, discrimination, and decision summary for your selected class.</p>
+					<button type="button" onClick={handleGenerateItemAnalysisReport}>Generate Report</button>
+				</article>
+				<article className="reports-action-card blue">
+					<h3>Table of Specifications</h3>
+					<p>Competency-based breakdown with content areas, item placement, and item distribution.</p>
+					<button type="button" onClick={handleGenerateTosReport}>Generate Report</button>
 				</article>
 			</div>
 
@@ -965,7 +1211,7 @@ function MyReports() {
 								<p>{report.description}</p>
 								<div className="reports-card-meta">
 									<span>{report.updatedAt}</span>
-									<button type="button" onClick={report.onDownload} disabled={report.disabled}>{report.downloadLabel}</button>
+									<button type="button" onClick={report.onDownload}>{report.downloadLabel}</button>
 								</div>
 							</article>
 						))}

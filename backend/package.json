@@ -23,7 +23,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch server.ts",
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "clean-db": "tsx scripts/clean-database.ts"
   },
   "keywords": [],
   "author": "",
