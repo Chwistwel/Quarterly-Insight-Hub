@@ -1078,14 +1078,14 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
                 return value.trim();
             }
 
-            return `Q${quarterNumber}`;
+            return `Quarter ${quarterNumber}`;
         };
 
         const quarterOrder = new Map<string, number>([
-            ['Q1', 1],
-            ['Q2', 2],
-            ['Q3', 3],
-            ['Q4', 4]
+            ['Quarter 1', 1],
+            ['Quarter 2', 2],
+            ['Quarter 3', 3],
+            ['Quarter 4', 4]
         ]);
 
         type TeacherAssignedClass = {
@@ -1096,7 +1096,7 @@ app.get('/teacher/dashboard', async (req: Request, res: Response) => {
 
         let assignedClasses: TeacherAssignedClass[] = [];
         let uploads: Array<Record<string, unknown>> = [];
-        let filterQuarterOptions = ['Q1', 'Q2', 'Q3', 'Q4'];
+        let filterQuarterOptions = ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'];
 
         // Build teacher classes and uploads so dashboard is based on real data.
 
@@ -1574,16 +1574,12 @@ app.get('/teacher/upload-meta', async (req: Request, res: Response) => {
             }
 
             const teacherDisplayName = getTeacherDisplayNameFromUser(teacherAccount);
-            const assignedClassName = String(teacherAccount.className ?? '').trim();
             const classRecords = await prisma.classSection.findMany({ where: { teacherName: teacherDisplayName } });
-            const filteredClassRecords = assignedClassName
-                ? classRecords.filter((classItem) => buildClassLabel(classItem.gradeLevel, classItem.section) === assignedClassName)
-                : classRecords;
 
             const gradeSet = new Set<string>();
             const subjectSet = new Set<string>();
 
-            for (const classItem of filteredClassRecords) {
+            for (const classItem of classRecords) {
                 const classLabel = buildClassLabel(classItem.gradeLevel, classItem.section);
                 gradeSet.add(classLabel);
                 subjectSet.add(classItem.subject);
@@ -1634,24 +1630,33 @@ app.get('/teacher/tos', async (req: Request, res: Response) => {
     }
 
     try {
-        
-        
+        const normalizeQuarter = (value: string): string => {
+            const match = value.match(/(\d+)/);
+            if (!match) return value.trim();
+            const quarterDigits = match[1] ?? '';
+            const quarterNumber = Number.parseInt(quarterDigits, 10);
+            if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) return value.trim();
+            return `Quarter ${quarterNumber}`;
+        };
+
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
         const filter = {
             teacherEmail: normalizedTeacherEmail,
             schoolYear,
-            quarter,
             classValue,
             subject
         };
 
-        const blueprint = await prisma.tosBlueprint.findFirst({ where: filter });
+        const requestedQuarterKey = normalizeQuarter(quarter);
+        const blueprints = await prisma.tosBlueprint.findMany({ where: filter });
+        const blueprint = blueprints.find((record) => normalizeQuarter(String(record.quarter ?? '')) === requestedQuarterKey) ?? null;
 
         if (!blueprint) {
             return res.status(404).json({ message: 'No saved TOS draft found.' });
         }
 
-        const historyCount = await prisma.tosBlueprintHistory.count({ where: filter });
+        const histories = await prisma.tosBlueprintHistory.findMany({ where: filter, select: { quarter: true } });
+        const historyCount = histories.filter((record) => normalizeQuarter(String(record.quarter ?? '')) === requestedQuarterKey).length;
 
         return res.json({
             blueprint: {
@@ -1679,9 +1684,16 @@ app.get('/teacher/tos/options', async (req: Request, res: Response) => {
             message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.'
         });
     }
-
     try {
-        
+        const normalizeQuarter = (value: string): string => {
+            const match = value.match(/(\d+)/);
+            if (!match) return value.trim();
+            const quarterDigits = match[1] ?? '';
+            const quarterNumber = Number.parseInt(quarterDigits, 10);
+            if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) return value.trim();
+            return `Quarter ${quarterNumber}`;
+        };
+
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
         const createdBlueprints = await prisma.tosBlueprint.findMany({
             where: { teacherEmail: normalizedTeacherEmail },
@@ -1693,7 +1705,7 @@ app.get('/teacher/tos/options', async (req: Request, res: Response) => {
                 schoolYear: String(record.schoolYear ?? '').trim(),
                 classValue: String(record.classValue ?? '').trim(),
                 subject: String(record.subject ?? '').trim(),
-                quarter: String(record.quarter ?? '').trim()
+                quarter: normalizeQuarter(String(record.quarter ?? '').trim())
             }))
             .filter((record) => Boolean(record.schoolYear && record.classValue && record.subject && record.quarter));
 
@@ -1734,22 +1746,31 @@ app.get('/teacher/tos/history', async (req: Request, res: Response) => {
     if (!isDatabaseReady()) {
         return res.status(503).json({ message: 'Database is currently unreachable. If you are using MongoDB Atlas, allow your current IP in Network Access and try again.' });
     }
-
     try {
-        
+        const normalizeQuarter = (value: string): string => {
+            const match = value.match(/(\d+)/);
+            if (!match) return value.trim();
+            const quarterDigits = match[1] ?? '';
+            const quarterNumber = Number.parseInt(quarterDigits, 10);
+            if (!Number.isFinite(quarterNumber) || quarterNumber < 1 || quarterNumber > 4) return value.trim();
+            return `Quarter ${quarterNumber}`;
+        };
+
         const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const requestedQuarterKey = normalizeQuarter(quarter);
         const filter = {
             teacherEmail: normalizedTeacherEmail,
             schoolYear,
-            quarter,
             classValue,
             subject
         };
 
-        const history = await prisma.tosBlueprintHistory.findMany({
+        const allHistory = await prisma.tosBlueprintHistory.findMany({
             where: filter,
             orderBy: [{ version: 'desc' }, { savedAt: 'desc' }]
         });
+
+        const history = allHistory.filter((entry) => normalizeQuarter(String(entry.quarter ?? '')) === requestedQuarterKey);
 
         return res.json({
             history: history.map((entry) => ({
@@ -1818,6 +1839,52 @@ app.delete('/teacher/tos/history/:historyId', async (req: Request, res: Response
         return res.json({ message: 'TOS history entry deleted.' });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to delete TOS history.';
+        return res.status(500).json({ message });
+    }
+});
+
+app.delete('/teacher/tos', async (req: Request, res: Response) => {
+    const requesterRole = req.header('x-user-role');
+    const requesterEmail = req.header('x-user-email');
+    const schoolYear = typeof req.query.schoolYear === 'string' ? req.query.schoolYear.trim() : '';
+    const quarter = typeof req.query.quarter === 'string' ? req.query.quarter.trim() : '';
+    const classValue = typeof req.query.classValue === 'string' ? req.query.classValue.trim() : '';
+    const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
+
+    if (requesterRole !== 'teacher' || !requesterEmail?.trim()) {
+        return res.status(403).json({ message: 'Only teachers can delete TOS blueprints.' });
+    }
+
+    if (!schoolYear || !quarter || !classValue || !subject) {
+        return res.status(400).json({ message: 'School year, quarter, class, and subject are required.' });
+    }
+
+    if (!isDatabaseReady()) {
+        return res.status(503).json({ message: 'Database is currently unreachable.' });
+    }
+
+    try {
+        const normalizedTeacherEmail = normalizeEmail(requesterEmail);
+        const filter = {
+            teacherEmail: normalizedTeacherEmail,
+            schoolYear,
+            quarter,
+            classValue,
+            subject
+        };
+
+        const blueprint = await prisma.tosBlueprint.findFirst({ where: filter });
+
+        if (!blueprint) {
+            return res.status(404).json({ message: 'TOS blueprint not found.' });
+        }
+
+        await prisma.tosBlueprintHistory.deleteMany({ where: filter });
+        await prisma.tosBlueprint.deleteMany({ where: filter });
+
+        return res.json({ message: 'TOS blueprint and all history deleted.' });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to delete TOS blueprint.';
         return res.status(500).json({ message });
     }
 });
@@ -2228,12 +2295,25 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
         q2Score?: number;
         q3Score?: number;
         q4Score?: number;
-    }): string => {
-        const q1 = typeof student.q1Score === 'number' ? student.q1Score : 0;
-        const q2 = typeof student.q2Score === 'number' ? student.q2Score : 0;
-        const q3 = typeof student.q3Score === 'number' ? student.q3Score : 0;
-        const q4 = typeof student.q4Score === 'number' ? student.q4Score : 0;
-        const average = (q1 + q2 + q3 + q4) / 4;
+        grade?: string;
+        section?: string;
+        subject?: string;
+    }, activeQuarters: Set<string>): string => {
+        const quarterMap: Record<string, number> = {
+            'Quarter 1': typeof student.q1Score === 'number' ? student.q1Score : 0,
+            'Quarter 2': typeof student.q2Score === 'number' ? student.q2Score : 0,
+            'Quarter 3': typeof student.q3Score === 'number' ? student.q3Score : 0,
+            'Quarter 4': typeof student.q4Score === 'number' ? student.q4Score : 0
+        };
+        let sum = 0;
+        let count = 0;
+        for (const [key, score] of Object.entries(quarterMap)) {
+            if (activeQuarters.has(key)) {
+                sum += score;
+                count++;
+            }
+        }
+        const average = count > 0 ? sum / count : 0;
         return `${average.toFixed(1)}%`;
     };
 
@@ -2259,23 +2339,43 @@ app.get('/teacher/students', async (req: Request, res: Response) => {
         }
 
         const studentRecords = await prisma.student.findMany({ where: filter, orderBy: [{ name: 'asc' }] });
-        const students = studentRecords.map((student) => ({
-            ...parseNameParts(student.name),
-            id: String(student.id ?? `${student.classId}-${student.name}`),
-            studentNo: typeof student.studentNo === 'string' ? student.studentNo.trim() : '',
-            name: student.name,
-            gender: student.gender ?? '',
-            grade: student.grade,
-            section: student.section,
-            q1Score: student.q1Score ?? 0,
-            q2Score: student.q2Score ?? 0,
-            q3Score: student.q3Score ?? 0,
-            q4Score: student.q4Score ?? 0,
-            average: formatAverage(student),
-            classId: student.classId,
-            subject: student.subject,
-            ranking: typeof student.ranking === 'number' ? student.ranking : 0
-        }));
+
+        const teacherUploads = await prisma.teacherItemAnalysis.findMany({
+            where: { teacherEmail: normalizedTeacherEmail },
+            select: { class: true, subject: true, quarter: true }
+        });
+        const quarterLookup = new Map<string, Set<string>>();
+        for (const upload of teacherUploads) {
+            const key = `${upload.class.toLowerCase()}::${upload.subject.toLowerCase()}`;
+            if (!quarterLookup.has(key)) quarterLookup.set(key, new Set());
+            quarterLookup.get(key)!.add(upload.quarter);
+        }
+        const getActiveQuarters = (grade: string, section: string, subject: string): Set<string> => {
+            const classLabel = `${grade} - ${section}`;
+            const key = `${classLabel.toLowerCase()}::${subject.toLowerCase()}`;
+            return quarterLookup.get(key) ?? new Set<string>();
+        };
+
+        const students = studentRecords.map((student) => {
+            const activeQuarters = getActiveQuarters(student.grade, student.section, student.subject);
+            return {
+                ...parseNameParts(student.name),
+                id: String(student.id ?? `${student.classId}-${student.name}`),
+                studentNo: typeof student.studentNo === 'string' ? student.studentNo.trim() : '',
+                name: student.name,
+                gender: student.gender ?? '',
+                grade: student.grade,
+                section: student.section,
+                q1Score: student.q1Score ?? 0,
+                q2Score: student.q2Score ?? 0,
+                q3Score: student.q3Score ?? 0,
+                q4Score: student.q4Score ?? 0,
+                average: formatAverage(student, activeQuarters),
+                classId: student.classId,
+                subject: student.subject,
+                ranking: typeof student.ranking === 'number' ? student.ranking : 0
+            };
+        });
 
         const rankingLookup = await buildRankingLookup(students);
         const studentsWithRanking = students.map((student) => ({
@@ -3265,12 +3365,39 @@ app.get('/api/admin/school-overview', async (req: Request, res: Response) => {
         const classIds = classes.map((classItem) => classItem.id);
         const allStudents = await prisma.student.findMany({
             where: { classId: { in: classIds } },
-            select: { classId: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
+            select: { classId: true, grade: true, section: true, subject: true, q1Score: true, q2Score: true, q3Score: true, q4Score: true }
         });
+
+        const allTeacherUploads = await prisma.teacherItemAnalysis.findMany({
+            select: { class: true, subject: true, quarter: true }
+        });
+        const classSubjectQuarterLookup = new Map<string, Set<string>>();
+        for (const up of allTeacherUploads) {
+            const key = `${up.class.toLowerCase()}::${up.subject.toLowerCase()}`;
+            if (!classSubjectQuarterLookup.has(key)) classSubjectQuarterLookup.set(key, new Set());
+            classSubjectQuarterLookup.get(key)!.add(up.quarter);
+        }
 
         const classPerformanceMap = new Map<string, { studentCount: number; totalAverage: number; passCount: number }>();
         for (const student of allStudents) {
-            const studentAverage = ((student.q1Score ?? 0) + (student.q2Score ?? 0) + (student.q3Score ?? 0) + (student.q4Score ?? 0)) / 4;
+            const label = `${student.grade} - ${student.section}`;
+            const lookupKey = `${label.toLowerCase()}::${student.subject.toLowerCase()}`;
+            const activeQuarters = classSubjectQuarterLookup.get(lookupKey) ?? new Set<string>();
+            const quarterScores: Record<string, number> = {
+                'Quarter 1': student.q1Score ?? 0,
+                'Quarter 2': student.q2Score ?? 0,
+                'Quarter 3': student.q3Score ?? 0,
+                'Quarter 4': student.q4Score ?? 0
+            };
+            let sum = 0;
+            let count = 0;
+            for (const [q, score] of Object.entries(quarterScores)) {
+                if (activeQuarters.has(q)) {
+                    sum += score;
+                    count++;
+                }
+            }
+            const studentAverage = count > 0 ? sum / count : 0;
             const entry = classPerformanceMap.get(student.classId) ?? { studentCount: 0, totalAverage: 0, passCount: 0 };
             entry.studentCount += 1;
             entry.totalAverage += studentAverage;
@@ -4359,6 +4486,10 @@ app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
+        const oldTeacherName = existingClass.teacherName;
+        const newTeacherName = teacherName.trim();
+        const teacherChanged = oldTeacherName !== newTeacherName;
+
         const updatedClass = await prisma.classSection.update({
             where: { id: classId },
             data: {
@@ -4366,7 +4497,7 @@ app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
                 gradeLevel: gradeLevel.trim(),
                 section: section.trim(),
                 subject: subject.trim(),
-                teacherName: teacherName.trim(),
+                teacherName: newTeacherName,
                 studentCount: Math.floor(studentCount)
             }
         });
@@ -4375,8 +4506,27 @@ app.put('/api/admin/classes/:classId', async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
-        await syncDatabaseTeacherAssignmentByName(existingClass.teacherName);
-        await syncDatabaseTeacherAssignmentByName(updatedClass.teacherName);
+        if (teacherChanged) {
+            const classLabel = buildClassLabel(updatedClass.gradeLevel, updatedClass.section);
+            await prisma.student.deleteMany({ where: { classId } });
+
+            const parsedOldTeacher = parseTeacherDisplayName(oldTeacherName);
+            if (parsedOldTeacher.firstName && parsedOldTeacher.lastName) {
+                const oldTeacherRecord = await prisma.teacher.findFirst({
+                    where: { firstName: parsedOldTeacher.firstName, lastName: parsedOldTeacher.lastName }
+                });
+                if (oldTeacherRecord) {
+                    const oldEmail = oldTeacherRecord.email;
+                    const oldSubject = existingClass.subject;
+                    await prisma.teacherItemAnalysis.deleteMany({ where: { class: classLabel, subject: oldSubject, teacherEmail: oldEmail } });
+                    await prisma.tosBlueprintHistory.deleteMany({ where: { classValue: classLabel, subject: oldSubject, teacherEmail: oldEmail } });
+                    await prisma.tosBlueprint.deleteMany({ where: { classValue: classLabel, subject: oldSubject, teacherEmail: oldEmail } });
+                }
+            }
+        }
+
+        await syncDatabaseTeacherAssignmentByName(oldTeacherName);
+        await syncDatabaseTeacherAssignmentByName(newTeacherName);
 
         return res.json({
             message: 'Class record updated successfully.',
@@ -4419,15 +4569,34 @@ app.delete('/api/admin/classes/:classId', async (req: Request, res: Response) =>
             return res.status(403).json({ message: 'Only valid administrators can delete class records.' });
         }
 
-        const deletedClass = await prisma.classSection.delete({ where: { id: classId } });
+        const deletedClass = await prisma.classSection.findUnique({ where: { id: classId } });
 
         if (!deletedClass) {
             return res.status(404).json({ message: 'Class record not found.' });
         }
 
+        const classLabel = buildClassLabel(deletedClass.gradeLevel, deletedClass.section);
+
+        await prisma.student.deleteMany({ where: { classId } });
+
+        const parsedTeacherName = parseTeacherDisplayName(deletedClass.teacherName);
+        if (parsedTeacherName.firstName && parsedTeacherName.lastName) {
+            const teacherRecord = await prisma.teacher.findFirst({
+                where: { firstName: parsedTeacherName.firstName, lastName: parsedTeacherName.lastName }
+            });
+
+            if (teacherRecord) {
+                const teacherEmail = teacherRecord.email;
+                await prisma.teacherItemAnalysis.deleteMany({ where: { class: classLabel, subject: deletedClass.subject, teacherEmail } });
+                await prisma.tosBlueprintHistory.deleteMany({ where: { classValue: classLabel, subject: deletedClass.subject, teacherEmail } });
+                await prisma.tosBlueprint.deleteMany({ where: { classValue: classLabel, subject: deletedClass.subject, teacherEmail } });
+            }
+        }
+
+        await prisma.classSection.delete({ where: { id: classId } });
         await syncDatabaseTeacherAssignmentByName(deletedClass.teacherName);
 
-        return res.json({ message: 'Class record deleted successfully.' });
+        return res.json({ message: 'Class record and associated data deleted successfully.' });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to delete class record.';
         return res.status(500).json({ message });
@@ -4474,7 +4643,7 @@ app.get('/api/admin/tos', async (req: Request, res: Response) => {
                 return value.trim().toLowerCase();
             }
 
-            return `q${quarterNumber}`;
+            return `quarter ${quarterNumber}`;
         };
 
         const filter = {

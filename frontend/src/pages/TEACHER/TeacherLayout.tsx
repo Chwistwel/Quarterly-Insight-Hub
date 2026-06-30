@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LogOutIcon, MenuIcon } from '../../components/icons';
+import { NavLink, useLocation } from 'react-router-dom';
+import { MenuIcon } from '../../components/icons';
 import Header from '../../components/Header';
 import '../../styles/Header.css';
 
@@ -48,16 +48,8 @@ type TeacherLayoutProps = {
 
 function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
-	const navigate = useNavigate();
 	const location = useLocation();
 	const isAnalysisRoute = location.pathname.startsWith('/teacher/item-analysis') || location.pathname.startsWith('/teacher/tos-builder');
-
-	const handleLogout = () => {
-		localStorage.removeItem('userRole');
-		localStorage.removeItem('userEmail');
-		localStorage.removeItem('userProfile');
-		navigate('/');
-	};
 
 	const storedText = localStorage.getItem('userProfile');
 	const profile: { firstName?: string; lastName?: string; role?: string } | null = (() => {
@@ -109,10 +101,7 @@ function TeacherLayout({ title, actions, children }: TeacherLayoutProps) {
 						</NavLink>
 					</nav>
 
-					<button type="button" className="teacher-logout" onClick={handleLogout}>
-						<LogOutIcon className="layout-logout-icon" />
-						Log Out
-					</button>
+	
 				</aside>
 
 				<section className="teacher-main">

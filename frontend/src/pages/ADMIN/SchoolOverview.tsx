@@ -34,7 +34,7 @@ function SchoolOverview() {
 		...(data?.gradeOptions ?? [])
 	]), [data?.gradeOptions]);
 
-	const quarterOptions = ['All Quarters', 'First', 'Second', 'Third', 'Fourth'];
+	const quarterOptions = ['All Quarters', 'Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'];
 
 	const parseGradeOrder = (label: string): number => {
 		const match = label.match(/\d+/);

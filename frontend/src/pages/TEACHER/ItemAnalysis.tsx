@@ -201,7 +201,7 @@ function normalizeQuarter(value: string): string {
 		return value.trim();
 	}
 
-	return `Q${quarterNumber}`;
+	return `Quarter ${quarterNumber}`;
 }
 
 function buildQuarterDraftStorageKey(classValue: string, subject: string, quarter: string): string {

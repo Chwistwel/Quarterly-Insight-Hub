@@ -7,7 +7,7 @@ type ThemeMode = 'light' | 'dark';
 function getInitialTheme(): ThemeMode {
   const stored = localStorage.getItem('themeMode');
   if (stored === 'light' || stored === 'dark') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 type UserProfile = {
@@ -16,10 +16,31 @@ type UserProfile = {
   role?: 'teacher' | 'administrator';
 };
 
+type LogoutModalProps = {
+  onConfirm: () => void;
+  onCancel: () => void;
+};
+
+function LogoutModal({ onConfirm, onCancel }: LogoutModalProps) {
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal-content" onClick={(event) => event.stopPropagation()}>
+        <h3>Confirm Log Out</h3>
+        <p>Are you sure you want to log out?</p>
+        <div className="modal-actions">
+          <button type="button" className="modal-btn modal-btn-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="modal-btn modal-btn-confirm" onClick={onConfirm}>Log Out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Header() {
   const navigate = useNavigate();
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialTheme);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +67,8 @@ export default function Header() {
   const role = profile?.role || localStorage.getItem('userRole') as UserProfile['role'] | null;
 
   const handleLogout = () => {
+    setShowLogoutModal(false);
+    setMenuOpen(false);
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userProfile');
@@ -76,7 +99,7 @@ export default function Header() {
           </button>
           {menuOpen && (
             <div className="header-dropdown">
-              <button type="button" className="header-dropdown-item" onClick={handleLogout}>
+              <button type="button" className="header-dropdown-item" onClick={() => setShowLogoutModal(true)}>
                 <LogOutIcon className="header-icon" />
                 Log Out
               </button>
@@ -84,6 +107,13 @@ export default function Header() {
           )}
         </div>
       </div>
+
+      {showLogoutModal && (
+        <LogoutModal
+          onConfirm={handleLogout}
+          onCancel={() => { setShowLogoutModal(false); setMenuOpen(false); }}
+        />
+      )}
     </header>
   );
 }

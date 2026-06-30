@@ -232,6 +232,16 @@
   font-size: 0.9rem;
 }
 
+.auth-terms-link {
+  color: var(--brand, #2563eb);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.auth-terms-link:hover {
+  color: var(--brand-hover, #1d4ed8);
+}
+
 @media (max-width: 640px) {
   .auth-page {
     padding: 0.75rem;

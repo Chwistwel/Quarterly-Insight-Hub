@@ -135,7 +135,7 @@ function normalizeQuarterForLookup(value: string): string {
 	if (!match) return value.trim();
 	const qNum = Number.parseInt(match[1] ?? '', 10);
 	if (!Number.isFinite(qNum) || qNum < 1 || qNum > 4) return value.trim();
-	return `Q${qNum}`;
+	return `Quarter ${qNum}`;
 }
 
 function getTosCompetencyMap(classValue: string, subject: string, quarter: string): Map<number, string> {
@@ -1081,7 +1081,7 @@ function MyReports() {
 				const initialClass = analysisPayload.selectedClass ?? uploadMetaPayload.gradeLevels[0] ?? '';
 				const classSubjects = uploadMetaPayload.classSubjectMap?.[initialClass] ?? [];
 				const initialSubject = analysisPayload.selectedSubject ?? classSubjects[0] ?? uploadMetaPayload.subjects[0] ?? '';
-				const initialQuarter = analysisPayload.selectedQuarter ?? uploadMetaPayload.quarters[0] ?? 'First';
+				const initialQuarter = analysisPayload.selectedQuarter ?? uploadMetaPayload.quarters[0] ?? 'Quarter 1';
 
 				setLastUpdatedAt(new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }));
 				setSelectedClass(initialClass);
@@ -1173,7 +1173,7 @@ function MyReports() {
 						))}
 					</select>
 					<select value={selectedQuarter} onChange={(event) => setSelectedQuarter(event.target.value)}>
-						{(uploadMeta?.quarters ?? ['First', 'Second', 'Third', 'Fourth']).map((quarterOption) => (
+						{(uploadMeta?.quarters ?? ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4']).map((quarterOption) => (
 							<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
 						))}
 					</select>

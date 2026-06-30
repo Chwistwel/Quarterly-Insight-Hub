@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { TrashIcon, PlusIcon, CloseIcon } from '../../components/icons';
 import TeacherLayout from './TeacherLayout';
 import {
+	deleteTeacherTosBlueprint,
 	deleteTeacherTosHistoryEntry,
 	getTeacherTosBlueprint,
 	getTeacherTosBlueprintHistory,
@@ -65,7 +66,7 @@ function normalizeQuarter(value: string): string {
 		return value.trim();
 	}
 
-	return `Q${quarterNumber}`;
+	return `Quarter ${quarterNumber}`;
 }
 
 function buildQuarterDraftStorageKey(classValue: string, subject: string, quarter: string): string {
@@ -200,7 +201,7 @@ function TOSBuilder() {
 		prefill?: Pick<TosBlueprintPayload, 'schoolYear' | 'classValue' | 'subject' | 'quarter'>;
 	} | null) ?? null;
 	const [schoolYear, setSchoolYear] = useState('2025-2026');
-	const [quarter, setQuarter] = useState('1st Quarter');
+	const [quarter, setQuarter] = useState('Quarter 1');
 	const [subject, setSubject] = useState('');
 	const [classValue, setClassValue] = useState('');
 	const [totalDays, setTotalDays] = useState(48);
@@ -227,6 +228,7 @@ function TOSBuilder() {
 	const [landingSubject, setLandingSubject] = useState('');
 	const [landingQuarter, setLandingQuarter] = useState('');
 	const [landingHistoryCount, setLandingHistoryCount] = useState(0);
+	const [deletingTos, setDeletingTos] = useState(false);
 	const isCreatePage = location.pathname.endsWith('/create');
 
 	const sortedHistory = useMemo(() => {
@@ -326,7 +328,7 @@ function TOSBuilder() {
 			setSchoolYear(locationState.prefill.schoolYear || '2025-2026');
 			setClassValue(locationState.prefill.classValue || '');
 			setSubject(locationState.prefill.subject || '');
-			setQuarter(locationState.prefill.quarter || '1st Quarter');
+			setQuarter(locationState.prefill.quarter || 'Quarter 1');
 		}
 		// Fresh create pages should always start from a blank builder state.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,6 +425,35 @@ function TOSBuilder() {
 
 		return () => { active = false; };
 	}, [landingClass, landingSubject, landingQuarter, tosCreatedOptions]);
+
+
+
+	const handleDeleteTos = async () => {
+		if (!landingBlueprint) return;
+		const confirmed = window.confirm(
+			`Delete the entire TOS for ${landingBlueprint.subject} — ${landingBlueprint.classValue} (${landingBlueprint.quarter})?\nThis will also delete all saved history versions.`
+		);
+		if (!confirmed) return;
+
+		try {
+			setDeletingTos(true);
+			await deleteTeacherTosBlueprint({
+				schoolYear: landingBlueprint.schoolYear,
+				classValue: landingBlueprint.classValue,
+				subject: landingBlueprint.subject,
+				quarter: landingBlueprint.quarter
+			});
+			setLandingBlueprint(null);
+			setLandingHistoryCount(0);
+			const refreshed = await getTeacherTosCreatedOptions();
+			setTosCreatedOptions(refreshed);
+			setStatusMessage('TOS blueprint deleted.');
+		} catch (error) {
+			setStatusMessage(error instanceof Error ? error.message : 'Unable to delete TOS blueprint.');
+		} finally {
+			setDeletingTos(false);
+		}
+	};
 
 	const handleLandingCreate = () => {
 		navigate('/teacher/tos-builder/create');
@@ -702,7 +733,7 @@ function TOSBuilder() {
 
 	const handleCreateDraft = () => {
 		setSchoolYear('2025-2026');
-		setQuarter('1st Quarter');
+		setQuarter('Quarter 1');
 		setSubject('');
 		setClassValue('');
 		setTotalDays(48);
@@ -849,7 +880,16 @@ function TOSBuilder() {
 									<strong style={{ fontSize: '1rem', color: 'var(--brand)' }}>{landingBlueprint.subject} — {landingBlueprint.classValue}</strong>
 									<div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{landingBlueprint.quarter} • {landingBlueprint.schoolYear}</div>
 								</div>
-
+								<button
+									type="button"
+									className="teacher-icon-btn"
+									onClick={handleDeleteTos}
+									disabled={deletingTos}
+									title="Delete TOS"
+									style={{ color: 'var(--danger, #dc3545)' }}
+								>
+									<TrashIcon className="ui-inline-icon" />
+								</button>
 							</div>
 							<div style={{ display: 'grid', gap: '1rem', marginBottom: '1rem' }}>
 								<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
@@ -1000,7 +1040,7 @@ function TOSBuilder() {
 					<label>
 						Quarter
 						<select value={quarter} onChange={(event) => setQuarter(event.target.value)}>
-							{(uploadMeta?.quarters ?? ['1st Quarter', '2nd Quarter', '3rd Quarter', '4th Quarter']).map((quarterOption) => (
+							{(uploadMeta?.quarters ?? ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4']).map((quarterOption) => (
 								<option key={quarterOption} value={quarterOption}>{quarterOption}</option>
 							))}
 						</select>

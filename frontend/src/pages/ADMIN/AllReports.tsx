@@ -295,7 +295,7 @@ function AllReports() {
 				</select>
 				<select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value)} disabled={!selectedSubject}>
 					<option value="">Select Quarter</option>
-					{(data?.quarterOptions ?? ['First', 'Second', 'Third', 'Fourth']).map((opt) => (
+					{(data?.quarterOptions ?? ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4']).map((opt) => (
 						<option key={opt} value={opt}>{opt}</option>
 					))}
 				</select>

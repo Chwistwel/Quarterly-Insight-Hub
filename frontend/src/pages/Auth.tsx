@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { fetchJson } from '../services/api';
 import { EyeIcon, EyeOffIcon } from '../components/icons';
 import '../styles/Auth.css';
@@ -145,7 +145,7 @@ function Auth() {
           </button>
         </form>
 
-        <p className="auth-note">By signing in, you agree to our Terms and Privacy Policy.</p>
+        <p className="auth-note">By signing in, you agree to our <Link to="/terms-of-service" className="auth-terms-link">Terms of Service</Link> and <Link to="/privacy-policy" className="auth-terms-link">Privacy Policy</Link>.</p>
       </section>
     </div>
   );

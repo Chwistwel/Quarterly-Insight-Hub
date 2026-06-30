@@ -526,6 +526,14 @@ export async function deleteTeacherTosHistoryEntry(historyId: string): Promise<v
 	});
 }
 
+export async function deleteTeacherTosBlueprint(query: Pick<TosBlueprintPayload, 'schoolYear' | 'quarter' | 'classValue' | 'subject'>): Promise<void> {
+	const params = new URLSearchParams(query);
+	await fetchJson<{ message: string }>(`/teacher/tos?${params.toString()}`, {
+		method: 'DELETE',
+		headers: getTeacherAuthHeaders()
+	});
+}
+
 export async function saveTeacherTosBlueprint(payload: TosBlueprintPayload): Promise<TosBlueprintRecord> {
 	const response = await fetchJson<{ message: string; blueprint: TosBlueprintRecord; savedAt: string }>('/teacher/tos', {
 		method: 'POST',
